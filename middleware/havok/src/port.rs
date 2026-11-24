@@ -4,7 +4,7 @@
 //! lanes BFBC2's exporter writes ([`shape_subparts_to_550`], [`aabb_w`]), and the physics materials' readers and
 //! writers ([`part_materials`], [`with_part_materials`], [`havok_materials`], [`with_havok_materials`],
 //! [`bodies`], [`with_face_materials`]). Between the first two steps the caller runs the console converter
-//! (`havok.convert`, whose packfile walk is [`crate::havok`]).
+//! (`havok.convert`, whose packfile walk is [`crate::convert`]).
 //!
 //! Each function is the reference step for step. [`Port::Error`] / [`Port::Material`] carry the reference's
 //! `PortError` / `MaterialError` messages; [`Port::Refused`] is returned wherever the reference would raise

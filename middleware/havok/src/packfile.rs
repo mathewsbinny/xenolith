@@ -694,7 +694,7 @@ pub fn parts(data: &[u8]) -> Result<Option<Parts>> {
 }
 
 /// A small packfile with one storage extended mesh subpart holding `vertices` and `triangles` (a test writer, as
-/// [`fbrb::build`](crate::fbrb::build): the game's packfiles come from Havok's tools). [`triangles`] reads them back.
+/// `fbrb::build`: the game's packfiles come from Havok's tools). [`triangles`] reads them back.
 ///
 /// ```
 /// use x360_havok::packfile as havok;

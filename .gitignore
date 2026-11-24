@@ -1,4 +1,5 @@
 /target/
+/bin/
 **/*.rs.bk
 *.pdb
 .DS_Store
