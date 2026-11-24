@@ -1,0 +1,27 @@
+[package]
+name = "x360-frostbite"
+description = "Frostbite 1 / 1.5 Xbox 360 -> PC engine adapters (textures, meshes, terrain, water, EA-XAS/Wave audio, Havok classes, AimAnimation)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+rayon.workspace = true
+memchr.workspace = true
+regex.workspace = true
+x360-containers.workspace = true
+x360-xma.workspace = true
+x360-xenos-shader.workspace = true
+x360-xenos-texture.workspace = true
+x360-havok.workspace = true
+x360-granny.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+sha1_smol.workspace = true
+
+[lints]
+workspace = true

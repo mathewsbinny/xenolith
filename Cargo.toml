@@ -1,0 +1,78 @@
+# Xbox 360 -> PC Porting Tools
+#
+# Modular pure-Rust workspace for converting Xbox 360 assets, middleware data,
+# and engine-specific formats to PC:
+#
+#   platform/   - Engine-agnostic Xbox 360 hardware, OS, and media formats
+#   middleware/ - Engine-agnostic third-party middleware (Havok, Granny, ...)
+#   engines/    - Engine-specific adapters sharing platform/ and middleware/ (Frostbite, ...)
+#
+# Commands:
+#   cargo test
+#   cargo clippy --all-targets -- -D warnings
+#   cargo fmt --check
+
+[workspace]
+resolver = "3"
+members = [
+    "platform/x360-containers",
+    "platform/x360-xma",
+    "platform/x360-xenos-shader",
+    "platform/x360-xenos-texture",
+    "middleware/havok",
+    "middleware/granny",
+    "engines/frostbite",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+x360-containers = { path = "platform/x360-containers" }
+x360-xma = { path = "platform/x360-xma" }
+x360-xenos-shader = { path = "platform/x360-xenos-shader" }
+x360-xenos-texture = { path = "platform/x360-xenos-texture" }
+x360-havok = { path = "middleware/havok" }
+x360-granny = { path = "middleware/granny" }
+
+thiserror = "=2.0.21"
+rayon = "=1.12.0"
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+flate2 = { version = "=1.1.11", default-features = false, features = ["zlib-rs"] }
+sha1_smol = "=1.0.1"
+memchr = "=2.8.3"
+regex = { version = "=1.13.1", default-features = false, features = ["std", "perf", "unicode"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+module_name_repetitions = "allow"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+iter_over_hash_type = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+debug = "line-tables-only"
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

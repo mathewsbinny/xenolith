@@ -1,0 +1,12 @@
+[package]
+name = "x360-containers"
+description = "Read-only readers for Xbox 360 STFS (LIVE / PIRS / CON) packages and XISO disc images"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "x360-granny"
+description = "RAD Granny 2 (.gr2) reader, Xbox 360 -> PC endian converter, curve sampler, and CRC writer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+rayon.workspace = true
+flate2.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "x360-havok"
+description = "Havok Physics packfile reader, data-driven Xbox 360 -> PC endian converter, MOPP decoder, and 4.6 -> 5.5 porting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
