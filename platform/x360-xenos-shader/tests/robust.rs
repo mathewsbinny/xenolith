@@ -3,9 +3,9 @@
 //! `bfbc2-shader-tools/tests/test_xenos_native.py`'s).
 #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 
+use proptest::prelude::*;
 use x360_xenos_shader::hlsl::{self, Interface};
 use x360_xenos_shader::xenos;
-use proptest::prelude::*;
 
 /// A pixel or vertex shader container with an empty header around `code` (whole 3-word slots).
 fn container(pixel: bool, interps: &[u32], code: &[u32]) -> Vec<u8> {

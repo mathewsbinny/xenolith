@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+flate2.workspace = true
 rayon.workspace = true
 memchr.workspace = true
 regex.workspace = true

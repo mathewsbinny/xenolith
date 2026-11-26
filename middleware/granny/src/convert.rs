@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 use std::hash::BuildHasher;
 
-use crate::format::{Endian, Granny, GrannyError, MAGIC, Ref, renumber, type_size};
 use crate::crc32;
+use crate::format::{Endian, Granny, GrannyError, MAGIC, Ref, renumber, type_size};
 use rayon::prelude::*;
 
 /// Members whose fields are 32-bit words (`_WORDS`): type -> words per element.

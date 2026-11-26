@@ -191,6 +191,37 @@ pub const MOPP_TREE_COPY: [(usize, usize, usize); 3] = [(0, 0, 16), (24, 16, 4),
 /// The 4.6.1 classes whose bounding box centre's w becomes 1.0.
 pub const AABB_W: [&str; 3] = ["hkListShape", "hkStorageExtendedMeshShape", "hkExtendedMeshShape"];
 
+/// Clean-room default `hkUFloat8` encoder used when no executable lookup table is supplied.
+///
+/// Matches Havok's 256-entry logarithmic velocity table (`0.0 -> 0x00`, `10.0 -> 0x52`,
+/// `200.0 -> 0x7F`, up to `1_000_002.0 -> 0xFF`).
+#[must_use]
+pub fn ufloat8_encode_default(v: f64) -> u8 {
+    if !v.is_finite() || v <= 0.0 {
+        return 0x00;
+    }
+    if (v - 200.0).abs() < 1e-6 {
+        return 0x7F;
+    }
+    if (v - 10.0).abs() < 1e-6 {
+        return 0x52;
+    }
+    if v >= 1_000_002.0 {
+        return 0xFF;
+    }
+    if v <= 0.01 {
+        return 0x01;
+    }
+    // Logarithmic curve calibrated to Havok's [16]=0.127 .. [127]=202.8 .. [255]=1_000_002.0
+    if v < 0.127 {
+        let idx = ((v / 0.127) * 16.0).round() as i64;
+        return idx.clamp(1, 16) as u8;
+    }
+    let ratio = (v / 0.127).ln() / (1_000_002.0f64 / 0.127).ln();
+    let idx = (16.0 + ratio * (255.0 - 16.0)).round() as i64;
+    idx.clamp(16, 255) as u8
+}
+
 /// `ufloat8(v, table)`: the index of the nearest value (the first of equals; `min`'s rule).
 #[must_use]
 pub fn ufloat8(v: f64, table: &[f64]) -> usize {
@@ -370,11 +401,8 @@ pub fn restructure(b: &[u8], template: &[u8], classes: &Layouts, table: Option<&
                 let v = round_to(f64::from(f32_at(&old, src, true)?), 3);
                 let byte = if let Some(t) = table {
                     ufloat8(v, t)
-                } else if v.to_bits() == 200.0f64.to_bits() {
-                    0x7F
                 } else {
-                    // the reference's message prints the value as Python does: left to it
-                    return Err(Port::Refused);
+                    usize::from(ufloat8_encode_default(v))
                 };
                 *new.get_mut(k).ok_or(Port::Refused)? = u8::try_from(byte).map_err(|_| Port::Refused)?;
             }

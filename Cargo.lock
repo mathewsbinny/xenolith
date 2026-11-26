@@ -3818,11 +3818,16 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 [[package]]
 name = "x360-containers"
 version = "0.1.0"
+dependencies = [
+ "sha1_smol",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "x360-frostbite"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "memchr",
  "proptest",
  "rayon",

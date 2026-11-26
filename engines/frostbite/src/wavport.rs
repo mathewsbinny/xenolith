@@ -41,7 +41,7 @@ fn source_of(s: &str) -> Option<wave::Source> {
     Some(match s {
         "bfbc2-xbox" => wave::Source::Bfbc2Xbox,
         "bfbc2-pc" => wave::Source::Bfbc2Pc,
-        "bf1943" => wave::Source::Bf1943,
+        "bf1943" | "bfbc1" => wave::Source::Bf1943,
         _ => return None,
     })
 }
@@ -148,7 +148,7 @@ fn decode_xas(st: &Stream) -> Option<Vec<i16>> {
 #[must_use]
 pub fn convert(b: &[u8], source: &str, streams: &[Option<&[u8]>; 3], word14: u32) -> Option<Vec<u8>> {
     let source = if source == "bfbc2" { "bfbc2-xbox" } else { source };
-    if !matches!(source, "bfbc2-xbox" | "bf1943") {
+    if !matches!(source, "bfbc2-xbox" | "bf1943" | "bfbc1") {
         return None;
     }
     let src = source_of(source)?;
@@ -180,6 +180,75 @@ pub fn convert(b: &[u8], source: &str, streams: &[Option<&[u8]>; 3], word14: u32
             .collect::<Result<_, _>>()
             .ok()?;
         segs.push(Some(wave::write_sps(header, &views).ok()?));
+    }
+    let word14 = if source == "bfbc2-xbox" { w.word14 } else { word14 };
+    let outro = u32::try_from(w.outro).ok()?;
+    let words = [w.flags_id, w.total, w.intro, w.channels, outro, word14];
+    let view = |i: usize| segs.get(i).and_then(Option::as_ref).map(|s| (s.as_slice(), &[][..]));
+    wave::write_wave_pc(&words, &[view(0), view(1), view(2)]).ok()
+}
+
+/// Converts a streamed console `Wave` (whose streamed segments are 8-byte BF1943/BFBC1 SNR
+/// headers, or 4-byte BFBC2 Xbox sample counts) into a PC streaming `Wave` (4-byte LE sample
+/// count per streamed segment), while converting any in-memory companion segments to PC EA-XAS
+/// SPS v1. Returns `None` if no segment is streamed (use [`convert`] for in-memory Waves).
+#[must_use]
+pub fn convert_streaming_stub(b: &[u8], source: &str, word14: u32) -> Option<Vec<u8>> {
+    let source = if source == "bfbc2" { "bfbc2-xbox" } else { source };
+    if !matches!(source, "bfbc2-xbox" | "bf1943" | "bfbc1") {
+        return None;
+    }
+    let src = source_of(source)?;
+    let w = wave::read_wave(b, src).ok()?;
+    let mut has_streamed = false;
+    let mut segs: Vec<Option<Vec<u8>>> = Vec::with_capacity(3);
+    for i in 0..3 {
+        let Some((data, _info)) = w.segments.get(i)?.as_ref() else {
+            segs.push(None);
+            continue;
+        };
+        let is_streamed = match src {
+            wave::Source::Bf1943 => data.len() == 8,
+            wave::Source::Bfbc2Xbox => data.len() == 4,
+            wave::Source::Bfbc2Pc => false,
+        };
+        if is_streamed {
+            has_streamed = true;
+            let samples = match src {
+                wave::Source::Bf1943 => {
+                    let h2 = u32::from_be_bytes(data.get(4..8)?.try_into().ok()?);
+                    h2 & 0x1FFF_FFFF
+                }
+                wave::Source::Bfbc2Xbox => u32::from_be_bytes(data.get(0..4)?.try_into().ok()?),
+                wave::Source::Bfbc2Pc => return None,
+            };
+            segs.push(Some(samples.to_le_bytes().to_vec()));
+        } else {
+            let st = segment_stream(&w, src, i, &[None, None, None])?;
+            if st.codec != 3 || st.channels != w.channels {
+                return None;
+            }
+            let pcm = decode_xma(&st)?;
+            let ch = st.channels as usize;
+            let frames = xas::encode(&pcm, ch).ok()?;
+            let blocks = audioframe::xas_blocks(&frames, u64::from(st.samples), ch as u64, st.rate).ok()?;
+            if st.rate >= 1 << 18 || st.channels == 0 || st.channels > 64 || st.samples >= 1 << 30 {
+                return None;
+            }
+            let header = (
+                1u32 << 28 | 4 << 24 | (st.channels - 1) << 18 | st.rate,
+                1u32 << 30 | st.samples,
+            );
+            let views: Vec<(u32, &[u8])> = blocks
+                .iter()
+                .map(|(k, d)| u32::try_from(*k).map(|k| (k, *d)))
+                .collect::<Result<_, _>>()
+                .ok()?;
+            segs.push(Some(wave::write_sps(header, &views).ok()?));
+        }
+    }
+    if !has_streamed {
+        return None;
     }
     let word14 = if source == "bfbc2-xbox" { w.word14 } else { word14 };
     let outro = u32::try_from(w.outro).ok()?;

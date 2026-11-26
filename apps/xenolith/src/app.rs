@@ -137,10 +137,7 @@ impl StudioApp {
                         match &status {
                             JobStatus::Done { output, bytes } => {
                                 ok_count += 1;
-                                self.log(
-                                    LogLevel::Ok,
-                                    format!("Wrote {} ({bytes} bytes)", output.display()),
-                                );
+                                self.log(LogLevel::Ok, format!("Wrote {} ({bytes} bytes)", output.display()));
                             }
                             JobStatus::Failed(msg) => {
                                 err_count += 1;
@@ -289,13 +286,16 @@ impl TabViewer for Viewer<'_> {
                         ui.label(RichText::new(insp.path.display().to_string()).color(pal.ink_muted));
                     });
                     ui.separator();
-                    egui::Grid::new("insp_fields").num_columns(2).striped(true).show(ui, |ui| {
-                        for (k, v) in &insp.fields {
-                            ui.label(RichText::new(k).color(pal.ink_muted));
-                            ui.label(v);
-                            ui.end_row();
-                        }
-                    });
+                    egui::Grid::new("insp_fields")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (k, v) in &insp.fields {
+                                ui.label(RichText::new(k).color(pal.ink_muted));
+                                ui.label(v);
+                                ui.end_row();
+                            }
+                        });
                     ui.separator();
                     egui::ScrollArea::vertical().id_salt("insp_primary").show(ui, |ui| {
                         ui.monospace(&insp.primary_text);

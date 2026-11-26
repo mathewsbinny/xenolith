@@ -44,8 +44,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::format::{Granny, Object, Ref, Text, Value, type_size};
 use crate::crc32;
+use crate::format::{Granny, Object, Ref, Text, Value, type_size};
 
 /// The resource with its Granny CRC recomputed (`Granny.to_bytes` of a PC resource): CRC-32 of the Granny file from
 /// `crc_from` to `total` (cut at the data's end), written at the file's byte 40. `None` where the reference raises.

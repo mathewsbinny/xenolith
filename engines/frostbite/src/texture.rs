@@ -24,8 +24,12 @@ pub use x360_xenos_texture::{Place, SurfaceDesc, TextureError, XenosFormat, pack
 /// The Frostbite texture header: 8 `u32` (version, type, format, flags, width, height, depth, mip count) and 15 level
 /// sizes.
 pub const HEADER: usize = 92;
+/// 64-byte `RES\x02XenonTexture` wrapper prefix found in Frostbite overlay/font archives.
+pub const RES_WRAPPER: usize = 64;
 /// Texture type 1: a cube map (six faces).
 pub const CUBE: u32 = 1;
+/// Texture type 2: a 3D volume texture (`depth >= 2` slices).
+pub const VOLUME: u32 = 2;
 const DXT5A: u32 = 3;
 const RGB565: u32 = 5;
 const BGRA8: u32 = 9;
@@ -89,13 +93,29 @@ fn header(words: [u32; 8], sizes: &[usize]) -> Vec<u8> {
     out
 }
 
-/// Converts a Frostbite console `XenonTexture` resource (92-byte BE header + Xenos tiled payload) into a PC
-/// `ITexture` resource (92-byte LE header + linear payload).
+/// Strips a 64-byte `RES\x02` resource wrapper prefix if present, returning the raw 92-byte
+/// `XenonTexture` header + tiled payload.
+#[must_use]
+pub fn unwrap_res_header(b: &[u8]) -> &[u8] {
+    if b.get(0..4) == Some(b"RES\x02")
+        && let Some(inner) = b.get(RES_WRAPPER..)
+        && inner.len() >= HEADER
+    {
+        return inner;
+    }
+    b
+}
+
+/// Converts a Frostbite console `XenonTexture` resource (92-byte BE header + Xenos tiled payload,
+/// with optional 64-byte `RES\x02` wrapper) into a PC `ITexture` resource (92-byte LE header +
+/// linear payload). Supports 2D (`typ = 0`), cube (`typ = 1`), and 3D volume (`typ = 2, depth >= 2`)
+/// textures.
 ///
 /// # Errors
 /// Returns [`TextureError::Refused`] on invalid headers/formats/lengths and [`TextureError::OutOfRange`] on
 /// out-of-bounds tiled addresses.
 pub fn convert(b: &[u8]) -> Result<Vec<u8>, TextureError> {
+    let b = unwrap_res_header(b);
     if b.len() < HEADER {
         return Err(refused("shorter than a texture header".into()));
     }
@@ -108,7 +128,8 @@ pub fn convert(b: &[u8]) -> Result<Vec<u8>, TextureError> {
     if mips > 32 - w.max(h).leading_zeros() {
         return Err(refused(format!("{mips} mip levels exceed the {w} x {h} chain")));
     }
-    if !(typ == 0 || typ == CUBE) || depth > 1 {
+    let is_volume = typ == VOLUME && (2..=256).contains(&depth);
+    if !is_volume && (!(typ == 0 || typ == CUBE) || depth > 1) {
         return Err(refused(format!(
             "texture type {typ} / depth {depth} is not converted (2D and cube maps only)"
         )));
@@ -118,12 +139,18 @@ pub fn convert(b: &[u8]) -> Result<Vec<u8>, TextureError> {
             "texture format {fmt} is not converted (FORMAT.md 2.4)"
         )));
     };
-    if matches!(fmt, DXT5A | RGB565 | BGRA8) && typ != 0 {
+    if matches!(fmt, DXT5A | RGB565 | BGRA8) && typ != 0 && !is_volume {
         return Err(refused(format!(
             "texture type {typ} in console format {fmt} is not converted (2D only)"
         )));
     }
-    let slices = if typ == CUBE { 6 } else { 1 };
+    let slices = if typ == CUBE {
+        6
+    } else if is_volume {
+        depth as usize
+    } else {
+        1
+    };
     let desc = SurfaceDesc {
         width: w as usize,
         height: h as usize,

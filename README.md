@@ -15,21 +15,24 @@ Extracted from the console-to-PC conversion stack of `bfbc2-tool-suite` and orga
 
 ```text
 platform/                   Engine-agnostic Xbox 360 hardware & OS layer
-├── x360-containers/        STFS (LIVE / PIRS / CON) packages & XISO disc images
+├── x360-containers/        STFS (LIVE / PIRS / CON) packages, XISO disc images & XEX2 executables
 ├── x360-xma/               Pure-Rust XMA2 audio decoder (LGPL-2.1-or-later)
 ├── x360-xenos-shader/      XDK shader container, microcode decoder, disasm, HLSL translator & CPU interpreter
 └── x360-xenos-texture/     Engine-agnostic Xenos 32x32 block tiling, mip packing, endian swap & decode
 
 middleware/                 Engine-agnostic third-party middleware converters
-├── havok/                  Havok packfile reader, reflection, endian swapper, MOPP & 4.6 -> 5.5 porting
+├── havok/                  Havok packfile reader, reflection, endian swapper, MOPP & 4.6.1 -> 5.5.0 porting
 └── granny/                 RAD Granny 2 (.gr2) reader, BE -> LE conversion, curve & CRC editing
 
 engines/                    Engine-specific adapters built on platform/ and middleware/
-└── frostbite/              Frostbite 1 / 1.5 adapters (92-byte XenonTexture/ITexture, MeshData/MeshSet,
-                            terrain/water/soot, EA-XAS/Wave audio, Havok PE classes, AimAnimation)
+└── frostbite/              Frostbite 1 / 1.5 adapters (XenonTexture/ITexture + RES\x02/3D volumes, FbRB,
+                            binary DBX, EA APT BIGF, MeshData/MeshSet, terrain/water/soot incl. 256x256,
+                            EA-XAS/Wave/streaming_sounds SPS v1 banks, ShaderDatabase DXBC & Dx9/10/11 fxc bridge,
+                            BFBC1 1.0 -> 1.5 upgraders (DBX + null-array pruning, Kynogon HPD v1 -> v2 navmeshes,
+                            Bink unwrap), AnimTreeInfo v6, GUID-aware dedup, bundle_port, AimAnimation)
 
-apps/                       Desktop & CLI applications built on the workspace
-└── xenolith/               Xenolith (`bin/xenolith.exe`) — egui/egui_dock GUI using `design/tokens.json`
+apps/                       Desktop GUI & headless CLI applications built on the workspace
+└── xenolith/               Xenolith (`target/release/xenolith.exe`) — egui/egui_dock GUI + headless CLI subcommands
 
 design/
 └── tokens.json             Tool Suite Design Language color tokens (Dark & Light themes)
@@ -43,7 +46,7 @@ The workspace is licensed under the **MIT License** (`LICENSE`), with one except
 ## Quick Commands
 
 ```powershell
-# Launch Xenolith GUI (debug) or build standalone bin/xenolith.exe (release)
+# Launch Xenolith GUI (debug) or build standalone target/release/xenolith.exe (release)
 cargo run -p xenolith
 cargo build --release -p xenolith
 

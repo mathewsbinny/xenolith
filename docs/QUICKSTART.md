@@ -24,16 +24,27 @@ cargo doc --workspace --no-deps --open
 cargo fmt --check
 ```
 
-### Launching Xenolith (Desktop GUI)
+### Launching Xenolith (Desktop GUI & Headless CLI)
 
 ```powershell
-# Run in development mode
+# Run desktop GUI in development mode
 cargo run -p xenolith
 
-# Build standalone release GUI executable (no console window)
+# Build standalone release executable (GUI when run with no args, CLI when passed a subcommand)
 cargo build --release -p xenolith
-copy target\release\xenolith.exe bin\xenolith.exe
-.\bin\xenolith.exe
+.\target\release\xenolith.exe
+
+# Headless CLI examples
+.\target\release\xenolith.exe inspect level-00.fbrb
+.\target\release\xenolith.exe port-fbrb --bfbc1 --havok-exe BFBC2Game.exe --havok-template havok_550_master_template.res level-00.fbrb level-00.pc.fbrb
+.\target\release\xenolith.exe dedup-fbrb level-00.pc.fbrb mp_common_level-00.fbrb level-00.dedup.fbrb
+.\target\release\xenolith.exe port-streaming-sounds --waves level-00.fbrb streaming_sounds-00.fbrb streaming_sounds.pc.fbrb
+.\target\release\xenolith.exe repack-sns music.sns music.pc.sns
+.\target\release\xenolith.exe compile-xenos-shaders --profile dx9 Single.res out_dx9/
+.\target\release\xenolith.exe compile-xenos-shaders --profile dx10 Single.res out_dx10/
+.\target\release\xenolith.exe upgrade-dbx old.dbx upgraded.dbx
+.\target\release\xenolith.exe upgrade-hpd bfbc1_pathdata.hpd pc_pathdata.hpd
+.\target\release\xenolith.exe unwrap-bink greenacres.res greenacres.bik
 ```
 
 ---

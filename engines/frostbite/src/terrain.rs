@@ -145,7 +145,7 @@ fn sub_heightfield(x: &[u8], n: u32, bfbc2: bool) -> Res<Vec<u8>> {
 /// See the module.
 pub fn heightfield(x: &[u8], bfbc2: bool) -> Res<Vec<u8>> {
     let n = be32(x, 0x18)?;
-    if n == 64 || n == 128 {
+    if n == 64 || n == 128 || n == 256 {
         return sub_heightfield(x, n, bfbc2);
     }
     let Some(fx) = fixed(n) else {
@@ -662,18 +662,13 @@ pub fn soot_mesh(x: &[u8]) -> Res<Vec<u8>> {
     let n = be32(x, 0x10)? as usize;
     sw(&mut out, "u4", 4, 5, 0)?;
     sw(&mut out, "f4", 4, 6 * n, 0x14)?;
-    let h = 0x14 + 24 * n;
-    sw(&mut out, "u4", 4, 4, h)?;
-    let (vb, ib) = (be32(x, h + 4)? as usize, be32(x, h + 8)? as usize);
-    let mut o = h + 16;
+    let mut o = 0x14 + 24 * n;
+    sw(&mut out, "u4", 4, 1, o)?;
+    let nparts = be32(x, o)? as usize;
+    o += 4;
     let stride = be32(x, 4)? as usize;
     if stride == 0 {
         return Err(Refusal::Reference);
-    }
-    if !vb.is_multiple_of(stride) || !ib.is_multiple_of(2) || o + vb + ib + 256 != len {
-        return fail(format!(
-            "soot mesh: {vb} vertex and {ib} index bytes do not fit a {len}-byte file"
-        ));
     }
     if stride != 12 {
         return fail(format!(
@@ -681,14 +676,30 @@ pub fn soot_mesh(x: &[u8]) -> Res<Vec<u8>> {
              BF1943's warehouse has 16)"
         ));
     }
-    for k in 0..vb / 12 {
-        let at = o + 12 * k;
-        swap(x, &mut out, 2, 4, at, at)?;
-        swap(x, &mut out, 4, 1, at + 8, at + 8)?;
+    for _ in 0..nparts {
+        sw(&mut out, "u4", 4, 3, o)?;
+        let (vb, ib) = (be32(x, o)? as usize, be32(x, o + 4)? as usize);
+        o += 12;
+        if !vb.is_multiple_of(stride) || !ib.is_multiple_of(2) || o + vb + ib + 256 > len {
+            return fail(format!(
+                "soot mesh: {vb} vertex and {ib} index bytes do not fit a {len}-byte file"
+            ));
+        }
+        for k in 0..vb / 12 {
+            let at = o + 12 * k;
+            swap(x, &mut out, 2, 4, at, at)?;
+            swap(x, &mut out, 4, 1, at + 8, at + 8)?;
+        }
+        o += vb;
+        sw(&mut out, "u2", 2, ib / 2, o)?;
+        sw(&mut out, "u4", 4, 64, o + ib)?;
+        o += ib + 256;
     }
-    o += vb;
-    sw(&mut out, "u2", 2, ib / 2, o)?;
-    sw(&mut out, "u4", 4, 64, o + ib)?;
+    if o != len {
+        return fail(format!(
+            "soot mesh: {nparts} parts end at {o} of a {len}-byte file"
+        ));
+    }
     Ok(out)
 }
 

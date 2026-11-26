@@ -146,6 +146,39 @@ fn refusals_carry_the_reference_messages() {
     let mut short = header_only([3, 0, 9, 1, 4, 4, 0, 1]);
     short.extend([0u8; 100]);
     assert_eq!(msg(&short), "100 bytes of texture data, the layout needs 4096");
+}
+
+#[test]
+fn converts_res02_wrapped_and_3d_volume_textures() {
+    // 1. RES\x02 64-byte wrapper around a valid 8x8 L8 texture
+    let mut raw = Vec::new();
+    for v in [3u32, 0, 10, 0, 8, 8, 0, 1] {
+        raw.extend(v.to_be_bytes());
+    }
+    raw.extend([0u8; 60]);
+    raw.extend(vec![9u8; 4096]);
+    let mut wrapped = vec![0u8; RES_WRAPPER];
+    wrapped[0..16].copy_from_slice(b"RES\x02XenonTexture");
+    wrapped.extend_from_slice(&raw);
+    let pc = convert(&wrapped).unwrap();
+    assert_eq!(pc.len(), HEADER + 64);
+    assert!(pc[HEADER..].iter().all(|&v| v == 9));
+
+    // 2. 3D volume texture (typ = VOLUME, depth = 4, 8x8 L8, 1 mip)
+    let (_, need) = layout(8, 8, 1, 10, 4).unwrap();
+    let mut vol = Vec::new();
+    for v in [3u32, VOLUME, 10, 0, 8, 8, 4, 1] {
+        vol.extend(v.to_be_bytes());
+    }
+    vol.extend([0u8; 60]);
+    vol.extend(vec![5u8; need]);
+    let pc_vol = convert(&vol).unwrap();
+    assert_eq!(pc_vol.len(), HEADER + 4 * 64);
+    assert!(pc_vol[HEADER..].iter().all(|&v| v == 5));
+}
+
+#[test]
+fn out_of_range_shapes() {
     assert_eq!(
         TextureError::OutOfRange.to_string(),
         "the layout reads past the end of the texture data (a level outside the console storage: a shape no texture \

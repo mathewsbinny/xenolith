@@ -412,6 +412,28 @@ pub fn write_sps(header: (u32, u32), blocks: &[(u32, &[u8])]) -> Result<Vec<u8>>
     Ok(out)
 }
 
+/// Writes EA SNS v0 audio blocks (`[flags:u8 | size:u24][samples:u32][payload...]`),
+/// setting the `0x80` end-of-stream flag on the final block.
+///
+/// # Errors
+/// [`Error::TooLarge`] when any block's byte size (`8 + data.len()`) exceeds 24 bits (`0xFF_FFFF`).
+pub fn write_sns(blocks: &[(u32, &[u8])]) -> Result<Vec<u8>> {
+    let total_bytes: usize = blocks.iter().map(|(_, d)| 8 + d.len()).sum();
+    let mut out = Vec::with_capacity(total_bytes);
+    let last = blocks.len().saturating_sub(1);
+    for (i, (samples, data)) in blocks.iter().enumerate() {
+        let size = u32::try_from(8 + data.len()).map_err(|_| Error::TooLarge)?;
+        if size > 0x00FF_FFFF {
+            return Err(Error::TooLarge);
+        }
+        let flags: u32 = if i == last { 0x8000_0000 } else { 0 };
+        out.extend_from_slice(&(flags | size).to_be_bytes());
+        out.extend_from_slice(&samples.to_be_bytes());
+        out.extend_from_slice(data);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {

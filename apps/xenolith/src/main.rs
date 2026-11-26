@@ -5,11 +5,16 @@
 #![allow(clippy::too_many_lines, reason = "egui panel layouts read top to bottom")]
 
 mod app;
+mod cli;
 mod pipeline;
 mod task;
 mod theme;
 
 fn main() -> eframe::Result {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        std::process::exit(cli::run(&args));
+    }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Xenolith — Xbox 360 to PC Porting Toolkit")

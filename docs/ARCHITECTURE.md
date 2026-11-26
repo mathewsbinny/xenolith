@@ -39,7 +39,7 @@ flowchart TD
     end
 
     subgraph Platform["platform/ (Xbox 360 Hardware & OS)"]
-        CT["x360-containers<br/>(STFS, XISO)"]
+        CT["x360-containers<br/>(STFS, XISO, XEX2)"]
         XT["x360-xenos-texture<br/>(32x32 tiling, mip pack, swap)"]
         XS["x360-xenos-shader<br/>(XDK, microcode, disasm, HLSL, exec)"]
         XM["x360-xma<br/>(XMA2 decoder, LGPL-2.1+)"]

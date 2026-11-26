@@ -772,6 +772,7 @@ fn emit(
     let start = vb.len();
     let ps: Vec<crate::mesh::Pair> = pairs
         .iter()
+        .filter(|(c, _)| c.3 == 0)
         .map(|(c, p)| crate::mesh::Pair {
             fc: c.0,
             oc: usize::from(c.2),

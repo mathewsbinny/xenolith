@@ -1279,7 +1279,12 @@ impl<'a> Machine<'a> {
                 // FMT_16_16
                 let (a, b) = (be16(byte_off)?, be16(byte_off + 2)?);
                 if vf.is_signed {
-                    [norm_i(i32::from(a as i16), 16), norm_i(i32::from(b as i16), 16), 0.0, 1.0]
+                    [
+                        norm_i(i32::from(a as i16), 16),
+                        norm_i(i32::from(b as i16), 16),
+                        0.0,
+                        1.0,
+                    ]
                 } else {
                     [norm_u(u32::from(a), 16), norm_u(u32::from(b), 16), 0.0, 1.0]
                 }
@@ -1307,7 +1312,11 @@ impl<'a> Machine<'a> {
             ],
             33 => {
                 let v = be32(byte_off)?;
-                let f = if vf.is_signed { norm_i(v as i32, 32) } else { norm_u(v, 32) };
+                let f = if vf.is_signed {
+                    norm_i(v as i32, 32)
+                } else {
+                    norm_u(v, 32)
+                };
                 [f, 0.0, 0.0, 1.0]
             }
             34 => {
@@ -1372,8 +1381,18 @@ impl<'a> Machine<'a> {
                     .opts
                     .vertex_buffers
                     .get(&vf.fetch_const)
-                    .or_else(|| u32::try_from(vf.vf()).ok().and_then(|k| self.opts.vertex_buffers.get(&k)))
-                    .ok_or_else(|| ExecError(format!("no vertex buffer for fetch_const {} (vf{})", vf.fetch_const, vf.vf())))?;
+                    .or_else(|| {
+                        u32::try_from(vf.vf())
+                            .ok()
+                            .and_then(|k| self.opts.vertex_buffers.get(&k))
+                    })
+                    .ok_or_else(|| {
+                        ExecError(format!(
+                            "no vertex buffer for fetch_const {} (vf{})",
+                            vf.fetch_const,
+                            vf.vf()
+                        ))
+                    })?;
                 let src_range = self.reg_range(ins.src as usize)?;
                 let lane = comp_index(vf.src_swizzle as u8);
                 let stride = if vf.stride > 0 { vf.stride } else { vb.default_stride };
@@ -1472,7 +1491,15 @@ impl<'a> Machine<'a> {
                         let s = self.fetch_src[p];
                         let face = s[2].round_ties_even().clamp(0.0, 5.0) as usize;
                         self.fetch_val[p] = if face < t.faces {
-                            self.sample_2d_one(t, face, AddressMode::Clamp, [s[0] - 1.0, s[1] - 1.0], [0.0, 0.0], t.point, false)
+                            self.sample_2d_one(
+                                t,
+                                face,
+                                AddressMode::Clamp,
+                                [s[0] - 1.0, s[1] - 1.0],
+                                [0.0, 0.0],
+                                t.point,
+                                false,
+                            )
                         } else {
                             [0.0; 4]
                         };
@@ -1699,9 +1726,7 @@ impl<'a> Machine<'a> {
                 }
                 CfKind::LoopStart { address, loop_id, .. } => {
                     let lc = self.opts.loop_consts.get(&loop_id).copied().unwrap_or_default();
-                    let skip_tgt = by_index
-                        .get(&address)
-                        .map_or(cfs.len(), |&end_k| end_k + 1);
+                    let skip_tgt = by_index.get(&address).map_or(cfs.len(), |&end_k| end_k + 1);
                     for p in 0..self.n {
                         if !here[p] {
                             continue;
@@ -1835,7 +1860,10 @@ pub fn run_with(
     } else {
         for (&reg, v) in inputs {
             if v.len() != n {
-                return Err(ExecError(format!("input r{reg} has {} vertices, expected {n}", v.len())));
+                return Err(ExecError(format!(
+                    "input r{reg} has {} vertices, expected {n}",
+                    v.len()
+                )));
             }
             let range = m.reg_range(reg as usize)?;
             m.r[range].copy_from_slice(v);
@@ -2015,9 +2043,21 @@ mod tests {
         // 1) Write c0 ([1, 1, 1, 1]) + c0 -> oC0 = [2, 2, 2, 2]
         // 2) kill_gt r0, c1 (kills pixel 0 where r0 > 0)
         // 3) Write c2 ([9, 9, 9, 9]) + c1 ([0,0,0,0]) -> oC0 (only surviving pixel 1 should get 9!)
-        let i0 = alu_vec(0, vec![op_const(0, "xyzw", None), op_const(0, "xyzw", None)], dest(File::Export("oC"), Some(0), "xyzw", false));
-        let i1 = alu_vec(25, vec![op_temp(0, "xyzw"), op_const(1, "xyzw", None)], dest(File::Temp, Some(1), "____", false));
-        let i2 = alu_vec(0, vec![op_const(2, "xyzw", None), op_const(1, "xyzw", None)], dest(File::Export("oC"), Some(0), "xyzw", false));
+        let i0 = alu_vec(
+            0,
+            vec![op_const(0, "xyzw", None), op_const(0, "xyzw", None)],
+            dest(File::Export("oC"), Some(0), "xyzw", false),
+        );
+        let i1 = alu_vec(
+            25,
+            vec![op_temp(0, "xyzw"), op_const(1, "xyzw", None)],
+            dest(File::Temp, Some(1), "____", false),
+        );
+        let i2 = alu_vec(
+            0,
+            vec![op_const(2, "xyzw", None), op_const(1, "xyzw", None)],
+            dest(File::Export("oC"), Some(0), "xyzw", false),
+        );
         let cf = vec![Cf {
             index: 0,
             opcode: 2,
@@ -2086,9 +2126,21 @@ mod tests {
         // CF 5: exec [r0 = r0 + c[20]]
         // CF 6: return
         let instrs = vec![
-            alu_vec(0, vec![op_temp(0, "xyzw"), op_const(10, "xyzw", Some("aL"))], dest(File::Temp, Some(0), "xyzw", false)),
-            alu_vec(0, vec![op_temp(0, "xyzw"), op_const(0, "xyzw", None)], dest(File::Export("oC"), Some(0), "xyzw", false)),
-            alu_vec(0, vec![op_temp(0, "xyzw"), op_const(20, "xyzw", None)], dest(File::Temp, Some(0), "xyzw", false)),
+            alu_vec(
+                0,
+                vec![op_temp(0, "xyzw"), op_const(10, "xyzw", Some("aL"))],
+                dest(File::Temp, Some(0), "xyzw", false),
+            ),
+            alu_vec(
+                0,
+                vec![op_temp(0, "xyzw"), op_const(0, "xyzw", None)],
+                dest(File::Export("oC"), Some(0), "xyzw", false),
+            ),
+            alu_vec(
+                0,
+                vec![op_temp(0, "xyzw"), op_const(20, "xyzw", None)],
+                dest(File::Temp, Some(0), "xyzw", false),
+            ),
         ];
         let exec_cf = |index, is_end, idxs| Cf {
             index,
@@ -2173,7 +2225,14 @@ mod tests {
         ]);
         let opts = Options {
             bool_consts: 1,
-            loop_consts: BTreeMap::from([(0, LoopConst { count: 3, start: 0, step: 1 })]),
+            loop_consts: BTreeMap::from([(
+                0,
+                LoopConst {
+                    count: 3,
+                    start: 0,
+                    step: 1,
+                },
+            )]),
             ..Options::default()
         };
         let res = run_with(&sh, &BTreeMap::new(), &consts, &BTreeMap::new(), 2, None, None, &opts).unwrap();
@@ -2222,7 +2281,11 @@ mod tests {
                 }),
             }),
         };
-        let export_pos = alu_vec(0, vec![op_temp(1, "xyzw"), op_const(0, "xyzw", None)], dest(File::Export("oPos"), None, "xyzw", false));
+        let export_pos = alu_vec(
+            0,
+            vec![op_temp(1, "xyzw"), op_const(0, "xyzw", None)],
+            dest(File::Export("oPos"), None, "xyzw", false),
+        );
         let cf = vec![Cf {
             index: 0,
             opcode: 2,
@@ -2281,19 +2344,51 @@ mod tests {
         let opts = Options::default();
         let m = Machine::new(&sh, 1, &BTreeMap::new(), &textures, &opts);
         assert_eq!(
-            m.sample_2d_one(&textures[&0], 0, AddressMode::Clamp, [0.25, 0.25], [0.0, 0.0], true, false),
+            m.sample_2d_one(
+                &textures[&0],
+                0,
+                AddressMode::Clamp,
+                [0.25, 0.25],
+                [0.0, 0.0],
+                true,
+                false
+            ),
             [1.0, 0.0, 0.0, 1.0]
         );
         assert_eq!(
-            m.sample_2d_one(&textures[&0], 0, AddressMode::Clamp, [0.5, 0.5], [0.0, 0.0], false, false),
+            m.sample_2d_one(
+                &textures[&0],
+                0,
+                AddressMode::Clamp,
+                [0.5, 0.5],
+                [0.0, 0.0],
+                false,
+                false
+            ),
             [0.5, 0.5, 0.5, 1.0]
         );
         assert_eq!(
-            m.sample_2d_one(&textures[&0], 0, AddressMode::Clamp, [1.0, 1.0], [0.0, 0.0], false, true),
+            m.sample_2d_one(
+                &textures[&0],
+                0,
+                AddressMode::Clamp,
+                [1.0, 1.0],
+                [0.0, 0.0],
+                false,
+                true
+            ),
             [0.5, 0.5, 0.5, 1.0]
         );
         assert_eq!(
-            m.sample_2d_one(&textures[&0], 0, AddressMode::Zero, [-0.5, 0.25], [0.0, 0.0], true, false),
+            m.sample_2d_one(
+                &textures[&0],
+                0,
+                AddressMode::Zero,
+                [-0.5, 0.25],
+                [0.0, 0.0],
+                true,
+                false
+            ),
             [0.0, 0.0, 0.0, 0.0]
         );
     }

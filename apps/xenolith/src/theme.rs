@@ -133,9 +133,7 @@ fn parse_hex(s: &str) -> Color32 {
 
 fn build_palette(map: &BTreeMap<String, BTreeMap<String, String>>, key: &str, fallback_dark: bool) -> Palette {
     let get = |name: &str, def: Color32| -> Color32 {
-        map.get(name)
-            .and_then(|v| v.get(key))
-            .map_or(def, |hex| parse_hex(hex))
+        map.get(name).and_then(|v| v.get(key)).map_or(def, |hex| parse_hex(hex))
     };
     let bg = if fallback_dark {
         Color32::from_rgb(0x14, 0x14, 0x14)

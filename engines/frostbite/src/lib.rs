@@ -3,13 +3,22 @@
 #![deny(unsafe_code)]
 
 pub mod aimanim;
+pub mod apt;
 pub mod audio;
 pub mod audioframe;
+pub mod bfbc1;
+pub mod bundle_port;
+pub mod dbx;
+pub mod fbrb;
 pub mod hkclasses;
+pub mod menu_export;
+pub mod menu_port;
 pub mod mesh;
 pub mod meshconv;
 pub mod meshdata;
 pub mod pe;
+pub mod shader_db;
+pub mod sns;
 pub mod terrain;
 pub mod texcheck;
 pub mod texture;
