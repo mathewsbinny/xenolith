@@ -27,6 +27,7 @@ Usage:
                                                Translate & compile Xenos ShaderDB via fxc.exe
   xenolith upgrade-dbx <in> <out>              Upgrade BFBC1 binary DBX -> Frostbite 1.5
   xenolith dbx-to-xml <in> <out>               Export binary DBX partition -> XML
+  xenolith xml-to-dbx <in> <out>               Compile XML partition -> binary DBX
   xenolith inspect-apt <in.res>                List FSCommand, extern.*, and console prompt symbols
   xenolith unwrap-bink <in.res> <out.bik>      Strip RES\\x02 wrapper from BFBC1 movie -> .bik
   xenolith upgrade-hpd <in.hpd> <out.hpd>      Upgrade BFBC1 Kynogon HPD v1 navmesh -> FB 1.5 v2
@@ -361,6 +362,17 @@ fn dispatch(args: &[String]) -> Result<(), String> {
             let xml = x360_frostbite::dbx::parse(&raw).map_err(|e| e.to_string())?.to_xml();
             fs::write(outp, xml.as_bytes()).map_err(|e| format!("write {outp}: {e}"))?;
             outln(&format!("Exported XML -> {outp} ({} bytes)", xml.len()));
+            Ok(())
+        }
+        #[cfg(feature = "frostbite")]
+        "xml-to-dbx" => {
+            let (Some(inp), Some(outp)) = (args.get(1), args.get(2)) else {
+                return Err("usage: xenolith xml-to-dbx <in.xml> <out.dbx>".into());
+            };
+            let xml = fs::read_to_string(inp).map_err(|e| format!("read {inp}: {e}"))?;
+            let bin = x360_frostbite::dbx::from_xml(&xml).map_err(|e| e.to_string())?.to_bytes();
+            fs::write(outp, &bin).map_err(|e| format!("write {outp}: {e}"))?;
+            outln(&format!("Compiled binary DBX -> {outp} ({} bytes)", bin.len()));
             Ok(())
         }
         #[cfg(feature = "frostbite")]
