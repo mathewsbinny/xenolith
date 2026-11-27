@@ -69,12 +69,22 @@ fn segment_stream(w: &wave::Wave, src: wave::Source, i: usize, streams: &[Option
 /// `audio.xma2_riff` makes of them (XMA-DEC-1): interleaved int16 samples. Damaged packets decode as ffmpeg decodes
 /// them (its errors skipped, samples given); a stream that gives no samples is empty (the caller pads it with silence
 /// to the header's count, as it pads a short one), where the ffmpeg run raised its `AudioError` for an empty output.
+///
+/// Returns `None` when built without the `xma` Cargo feature (MIT-only build).
 #[must_use]
 pub fn decode_xma_part(packets: &[u8], channels: usize, rate: u32) -> Option<Vec<i16>> {
-    // the RIFF's average bytes a second (rate * channels * 2) sets ffmpeg's demuxer packets
-    let byte_rate = rate.saturating_mul(channels as u32).saturating_mul(2);
-    let d = x360_xma::decode(packets, channels, rate, byte_rate).ok()?;
-    Some(x360_xma::to_s16(&d.planar))
+    #[cfg(feature = "xma")]
+    {
+        // the RIFF's average bytes a second (rate * channels * 2) sets ffmpeg's demuxer packets
+        let byte_rate = rate.saturating_mul(channels as u32).saturating_mul(2);
+        let d = x360_xma::decode(packets, channels, rate, byte_rate).ok()?;
+        Some(x360_xma::to_s16(&d.planar))
+    }
+    #[cfg(not(feature = "xma"))]
+    {
+        let _ = (packets, channels, rate);
+        None
+    }
 }
 
 /// `decode_xma(st)`: interleaved int16 samples, cut or padded with silence to the header's count.

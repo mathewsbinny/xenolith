@@ -250,113 +250,22 @@ fn convert_one(
             (out, EntryStatus::Converted("WeatherSystem -> PC v72"))
         }
         "AnimTreeInfo" if entry.data.len() >= 20 => {
-            let d = &entry.data;
-            let ver = u32::from_be_bytes([d[0], d[1], d[2], d[3]]);
-            let base = u32::from_be_bytes([d[4], d[5], d[6], d[7]]);
-            let s0 = u32::from_be_bytes([d[8], d[9], d[10], d[11]]) as usize;
-            let s1 = u32::from_be_bytes([d[12], d[13], d[14], d[15]]) as usize;
-            let s2 = u32::from_be_bytes([d[16], d[17], d[18], d[19]]) as usize;
-            if ver == 6 && 20usize.saturating_add(s0).saturating_add(s1).saturating_add(s2) == d.len() {
-                let mut pc = d.clone();
-                let mut off = 0usize;
-                while off + 4 <= d.len() {
-                    let v = u32::from_be_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]]);
-                    pc[off..off + 4].copy_from_slice(&v.to_le_bytes());
-                    off += 4;
-                }
-                // Walk Section 0 node pointer table (`0x18`: node_count, `0x24`: node_ptrs[])
-                let sec0_end = 20 + s0;
-                if s0 >= 16 && d.len() >= 0x24 {
-                    let node_cnt = u32::from_be_bytes([d[0x18], d[0x19], d[0x1A], d[0x1B]]) as usize;
-                    let mut node_offs: Vec<usize> = Vec::with_capacity(node_cnt);
-                    for i in 0..node_cnt {
-                        let po = 0x24 + i * 4;
-                        if po + 4 > sec0_end {
-                            break;
-                        }
-                        let nptr = u32::from_be_bytes([d[po], d[po + 1], d[po + 2], d[po + 3]]);
-                        if nptr >= base {
-                            let noff = 0x14 + (nptr - base) as usize;
-                            if noff < sec0_end {
-                                node_offs.push(noff);
-                            }
-                        }
-                    }
-                    for (idx, &noff) in node_offs.iter().enumerate() {
-                        // Node +0x14: 3 x u16 + 2 x u8
-                        if noff + 0x1C <= sec0_end {
-                            for k in 0..3 {
-                                let o = noff + 0x14 + k * 2;
-                                let v = u16::from_be_bytes([d[o], d[o + 1]]);
-                                pc[o..o + 2].copy_from_slice(&v.to_le_bytes());
-                            }
-                            pc[noff + 0x1A] = d[noff + 0x1A];
-                            pc[noff + 0x1B] = d[noff + 0x1B];
-                        }
-                        // Optional u16 child-index tail between +0x3C and next node (when node size > 0x40)
-                        let next_off = node_offs.get(idx + 1).copied().unwrap_or(sec0_end);
-                        if next_off > noff + 0x40 && next_off <= sec0_end && next_off - noff <= 0x80 {
-                            let mut co = noff + 0x3C;
-                            while co + 2 <= next_off {
-                                let v = u16::from_be_bytes([d[co], d[co + 1]]);
-                                pc[co..co + 2].copy_from_slice(&v.to_le_bytes());
-                                co += 2;
-                            }
-                        }
-                    }
-                }
+            if let Some(pc) = convert_anim_tree_info(&entry.data) {
                 out.data = pc;
                 (out, EntryStatus::Converted("AnimTreeInfo v6 -> PC"))
             } else {
-                (out, EntryStatus::Skipped("AnimTreeInfo: unsupported version/layout".to_owned()))
+                (
+                    out,
+                    EntryStatus::Skipped("AnimTreeInfo: unsupported version/layout".to_owned()),
+                )
             }
         }
         "IrradianceVolume" if entry.data.len() >= 36 => {
-            // 6 f32 AABB + 3 u32 grid dims (BE -> LE), followed by dx*dy*dz u8 voxels
-            let mut pc = entry.data.clone();
-            for i in 0..9 {
-                let off = i * 4;
-                let v = u32::from_be_bytes([pc[off], pc[off + 1], pc[off + 2], pc[off + 3]]);
-                pc[off..off + 4].copy_from_slice(&v.to_le_bytes());
-            }
-            out.data = pc;
+            out.data = convert_irradiance_volume(&entry.data);
             (out, EntryStatus::Converted("IrradianceVolume -> PC"))
         }
         "OccluderMesh" if entry.data.len() >= 44 => {
-            // 0x00..0x18: 6 f32 AABB; 0x18: u32 payload_size; 0x1C: u16 v_cnt, u16 i_cnt;
-            // 0x20..0x2C: u32 vert_off, idx_off, edge_off (relative to 0x1C);
-            // 0x1C+edge_off..0x1C+idx_off: u32/f32 words; 0x1C+idx_off..end: u16 indices.
-            let d = &entry.data;
-            let mut pc = d.clone();
-            for i in 0..7 {
-                let off = i * 4;
-                let v = u32::from_be_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]]);
-                pc[off..off + 4].copy_from_slice(&v.to_le_bytes());
-            }
-            let v_cnt = u16::from_be_bytes([d[28], d[29]]);
-            let i_cnt = u16::from_be_bytes([d[30], d[31]]);
-            pc[28..30].copy_from_slice(&v_cnt.to_le_bytes());
-            pc[30..32].copy_from_slice(&i_cnt.to_le_bytes());
-            let vert_off = u32::from_be_bytes([d[32], d[33], d[34], d[35]]);
-            let idx_off = u32::from_be_bytes([d[36], d[37], d[38], d[39]]);
-            let edge_off = u32::from_be_bytes([d[40], d[41], d[42], d[43]]);
-            pc[32..36].copy_from_slice(&vert_off.to_le_bytes());
-            pc[36..40].copy_from_slice(&idx_off.to_le_bytes());
-            pc[40..44].copy_from_slice(&edge_off.to_le_bytes());
-            let idx_abs = 28usize.saturating_add(idx_off as usize).min(d.len());
-            let mut off = 44usize;
-            while off + 4 <= idx_abs {
-                let v = u32::from_be_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]]);
-                pc[off..off + 4].copy_from_slice(&v.to_le_bytes());
-                off += 4;
-            }
-            let mut ioff = idx_abs;
-            while ioff + 2 <= d.len() {
-                let v = u16::from_be_bytes([d[ioff], d[ioff + 1]]);
-                pc[ioff..ioff + 2].copy_from_slice(&v.to_le_bytes());
-                ioff += 2;
-            }
-            out.data = pc;
+            out.data = convert_occluder_mesh(&entry.data);
             (out, EntryStatus::Converted("OccluderMesh -> PC"))
         }
         "RigidMeshSet" | "CompositeMeshSet" | "SkinnedMeshSet" | "TreeMeshSet" => {
@@ -386,28 +295,24 @@ fn convert_one(
                 let norm_path = entry.path.replace('\\', "/").to_ascii_lowercase();
                 let lod_pref = norm_path.strip_suffix("_data.res").unwrap_or(&norm_path);
                 let mut pairs: Vec<(&[u8], &[u8])> = Vec::with_capacity(hdr.parts.len());
+                let mut key_buf: Vec<u8> = Vec::with_capacity(128);
                 let mut all_found = !hdr.parts.is_empty();
                 for part in &hdr.parts {
                     let pname = part.name.to_ascii_lowercase();
                     let ptail = pname.rsplit(|&b| b == b'|').next().unwrap_or(&pname);
                     let ptail_base = ptail.strip_suffix(b"_zonly").unwrap_or(ptail);
                     let pname_base = pname.strip_suffix(b"_zonly").unwrap_or(&pname);
-                    let k1 = [lod_pref.as_bytes(), b"/", ptail, b"/standard"].concat();
-                    let k2 = [lod_pref.as_bytes(), b"/", ptail].concat();
-                    let k3 = [lod_pref.as_bytes(), b"/", &pname, b"/standard"].concat();
-                    let k4 = [lod_pref.as_bytes(), b"/", &pname].concat();
-                    let k5 = [lod_pref.as_bytes(), b"/", ptail_base].concat();
-                    let k6 = [lod_pref.as_bytes(), b"/", pname_base].concat();
-                    if let Some((c_lay, p_lay)) = layouts
-                        .get(&k1)
-                        .or_else(|| layouts.get(&k2))
-                        .or_else(|| layouts.get(&k3))
-                        .or_else(|| layouts.get(&k4))
-                        .or_else(|| layouts.get(&k5))
-                        .or_else(|| layouts.get(&k6))
+                    let found = lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), ptail, b"/standard")
+                        .or_else(|| lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), ptail, b""))
+                        .or_else(|| {
+                            lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), &pname, b"/standard")
+                        })
+                        .or_else(|| lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), &pname, b""))
+                        .or_else(|| lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), ptail_base, b""))
+                        .or_else(|| lookup_mesh_layout(layouts, &mut key_buf, lod_pref.as_bytes(), pname_base, b""))
                         .or_else(|| layouts.get(&pname))
-                        .or_else(|| layouts.get(&part.name))
-                    {
+                        .or_else(|| layouts.get(&part.name));
+                    if let Some((c_lay, p_lay)) = found {
                         pairs.push((c_lay.as_slice(), p_lay.as_slice()));
                     } else {
                         all_found = false;
@@ -460,11 +365,7 @@ fn convert_one(
                         if off > 0 {
                             match x360_havok::convert::convert_wrapper(&entry.data, off) {
                                 Ok(mut pc_wrap) => {
-                                    let pack_slice = if pc_pack.len() >= off {
-                                        &pc_pack[off..]
-                                    } else {
-                                        &pc_pack
-                                    };
+                                    let pack_slice = pc_pack.get(off..).unwrap_or(&pc_pack);
                                     pc_wrap.extend_from_slice(pack_slice);
                                     out.data = pc_wrap;
                                     (out, EntryStatus::Converted("Havok hkPackfile"))
@@ -521,9 +422,11 @@ pub fn port_archive(arc: &FbrbArchive, opts: &PortOptions<'_>) -> (FbrbArchive, 
             for (name, console_body) in meshconv::console_layouts(&entry.data) {
                 if let Some(pc_body) = bfbc1::build_pc_layout_body(&console_body) {
                     let lower = name.to_ascii_lowercase();
-                    if let Some(slash) = lower.iter().rposition(|&b| b == b'/') {
+                    if let Some(slash) = lower.iter().rposition(|&b| b == b'/')
+                        && let Some(parent) = lower.get(..slash)
+                    {
                         layouts
-                            .entry(lower[..slash].to_vec())
+                            .entry(parent.to_vec())
                             .or_insert_with(|| (console_body.clone(), pc_body.clone()));
                     }
                     layouts.entry(lower).or_insert((console_body, pc_body));
@@ -589,6 +492,137 @@ pub fn port_fbrb_bytes(raw: &[u8], opts: &PortOptions<'_>) -> Result<(Vec<u8>, B
     let (ported, report) = port_archive(&arc, opts);
     let bytes = ported.to_bytes(opts.compress_output)?;
     Ok((bytes, report))
+}
+
+fn read_be_u32(d: &[u8], off: usize) -> Option<u32> {
+    let b: [u8; 4] = d.get(off..off + 4)?.try_into().ok()?;
+    Some(u32::from_be_bytes(b))
+}
+
+fn read_be_u16(d: &[u8], off: usize) -> Option<u16> {
+    let b: [u8; 2] = d.get(off..off + 2)?.try_into().ok()?;
+    Some(u16::from_be_bytes(b))
+}
+
+fn swap_u32_be_to_le_in_place(buf: &mut [u8]) {
+    for chunk in buf.as_chunks_mut::<4>().0 {
+        chunk.reverse();
+    }
+}
+
+fn swap_u16_be_to_le_in_place(buf: &mut [u8]) {
+    for chunk in buf.as_chunks_mut::<2>().0 {
+        chunk.reverse();
+    }
+}
+
+fn convert_anim_tree_info(d: &[u8]) -> Option<Vec<u8>> {
+    let ver = read_be_u32(d, 0)?;
+    let base = read_be_u32(d, 4)?;
+    let s0 = read_be_u32(d, 8)? as usize;
+    let s1 = read_be_u32(d, 12)? as usize;
+    let s2 = read_be_u32(d, 16)? as usize;
+    if ver != 6 || 20usize.saturating_add(s0).saturating_add(s1).saturating_add(s2) != d.len() {
+        return None;
+    }
+    let mut pc = d.to_vec();
+    swap_u32_be_to_le_in_place(&mut pc);
+
+    // Walk Section 0 node pointer table (`0x18`: node_count, `0x24`: node_ptrs[])
+    let sec0_end = 20 + s0;
+    if s0 >= 16 && d.len() >= 0x24 {
+        let node_cnt = read_be_u32(d, 0x18).unwrap_or(0) as usize;
+        let mut node_offs: Vec<usize> = Vec::with_capacity(node_cnt.min(sec0_end / 4));
+        for i in 0..node_cnt {
+            let po = 0x24 + i * 4;
+            if po + 4 > sec0_end {
+                break;
+            }
+            if let Some(nptr) = read_be_u32(d, po)
+                && nptr >= base
+            {
+                let noff = 0x14 + (nptr - base) as usize;
+                if noff < sec0_end {
+                    node_offs.push(noff);
+                }
+            }
+        }
+        for (idx, &noff) in node_offs.iter().enumerate() {
+            // Node +0x14: 3 x u16 + 2 x u8
+            if noff + 0x1C <= sec0_end {
+                for k in 0..3 {
+                    let o = noff + 0x14 + k * 2;
+                    if let (Some(v), Some(dst)) = (read_be_u16(d, o), pc.get_mut(o..o + 2)) {
+                        dst.copy_from_slice(&v.to_le_bytes());
+                    }
+                }
+                if let (Some(src), Some(dst)) = (d.get(noff + 0x1A..noff + 0x1C), pc.get_mut(noff + 0x1A..noff + 0x1C))
+                {
+                    dst.copy_from_slice(src);
+                }
+            }
+            // Optional u16 child-index tail between +0x3C and next node (when node size > 0x40)
+            let next_off = node_offs.get(idx + 1).copied().unwrap_or(sec0_end);
+            if next_off > noff + 0x40
+                && next_off <= sec0_end
+                && next_off - noff <= 0x80
+                && let (Some(src), Some(dst)) = (d.get(noff + 0x3C..next_off), pc.get_mut(noff + 0x3C..next_off))
+            {
+                dst.copy_from_slice(src);
+                swap_u16_be_to_le_in_place(dst);
+            }
+        }
+    }
+    Some(pc)
+}
+
+fn convert_irradiance_volume(d: &[u8]) -> Vec<u8> {
+    // 6 f32 AABB + 3 u32 grid dims (BE -> LE), followed by dx*dy*dz u8 voxels
+    let mut pc = d.to_vec();
+    if let Some(hdr) = pc.get_mut(..36) {
+        swap_u32_be_to_le_in_place(hdr);
+    }
+    pc
+}
+
+fn convert_occluder_mesh(d: &[u8]) -> Vec<u8> {
+    // 0x00..0x18: 6 f32 AABB; 0x18: u32 payload_size; 0x1C: u16 v_cnt, u16 i_cnt;
+    // 0x20..0x2C: u32 vert_off, idx_off, edge_off (relative to 0x1C);
+    // 0x1C+edge_off..0x1C+idx_off: u32/f32 words; 0x1C+idx_off..end: u16 indices.
+    let mut pc = d.to_vec();
+    if let Some(aabb_hdr) = pc.get_mut(..28) {
+        swap_u32_be_to_le_in_place(aabb_hdr);
+    }
+    if let Some(counts) = pc.get_mut(28..32) {
+        swap_u16_be_to_le_in_place(counts);
+    }
+    let idx_off = read_be_u32(d, 36).unwrap_or(0) as usize;
+    if let Some(offs) = pc.get_mut(32..44) {
+        swap_u32_be_to_le_in_place(offs);
+    }
+    let idx_abs = 28usize.saturating_add(idx_off).min(d.len());
+    if let Some(words) = pc.get_mut(44..idx_abs) {
+        swap_u32_be_to_le_in_place(words);
+    }
+    if let Some(indices) = pc.get_mut(idx_abs..) {
+        swap_u16_be_to_le_in_place(indices);
+    }
+    pc
+}
+
+fn lookup_mesh_layout<'a>(
+    layouts: &'a BTreeMap<Vec<u8>, (Vec<u8>, Vec<u8>)>,
+    buf: &mut Vec<u8>,
+    prefix: &[u8],
+    name: &[u8],
+    suffix: &[u8],
+) -> Option<&'a (Vec<u8>, Vec<u8>)> {
+    buf.clear();
+    buf.extend_from_slice(prefix);
+    buf.push(b'/');
+    buf.extend_from_slice(name);
+    buf.extend_from_slice(suffix);
+    layouts.get(buf.as_slice())
 }
 
 #[cfg(test)]

@@ -493,137 +493,156 @@ pub fn parse(data: &[u8]) -> Result<DbxFile, DbxError> {
     Ok(DbxFile { roots })
 }
 
-/// Parses a Frostbite DBX XML document (such as produced by [`DbxFile::to_xml`]) into a [`DbxFile`].
-pub fn from_xml(xml: &str) -> Result<DbxFile, DbxError> {
-    fn unescape(s: &str) -> String {
-        s.replace("&quot;", "\"")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
+fn xml_unescape(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_owned();
     }
+    s.replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
 
-    fn parse_attrs(raw: &str) -> Result<Vec<(String, String)>, DbxError> {
-        let mut attrs = Vec::new();
-        let b = raw.as_bytes();
-        let mut i = 0usize;
-        while i < b.len() {
-            while i < b.len() && b[i].is_ascii_whitespace() {
-                i += 1;
-            }
-            if i >= b.len() {
-                break;
-            }
-            let k_start = i;
-            while i < b.len() && b[i] != b'=' && !b[i].is_ascii_whitespace() {
-                i += 1;
-            }
-            let key = raw[k_start..i].to_owned();
-            while i < b.len() && (b[i].is_ascii_whitespace() || b[i] == b'=') {
-                i += 1;
-            }
-            if i >= b.len() || (b[i] != b'"' && b[i] != b'\'') {
-                return Err(DbxError::Damaged(format!("expected quote for attr `{key}`")));
-            }
-            let q = b[i];
+fn xml_parse_attrs(raw: &str) -> Result<Vec<(String, String)>, DbxError> {
+    let mut attrs = Vec::new();
+    let b = raw.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        while b.get(i).is_some_and(u8::is_ascii_whitespace) {
             i += 1;
-            let v_start = i;
-            while i < b.len() && b[i] != q {
-                i += 1;
-            }
-            if i >= b.len() {
-                return Err(DbxError::Truncated("unterminated attribute value"));
-            }
-            let val = unescape(&raw[v_start..i]);
-            i += 1;
-            attrs.push((key, val));
         }
-        Ok(attrs)
+        if i >= b.len() {
+            break;
+        }
+        let k_start = i;
+        while b.get(i).is_some_and(|&c| c != b'=' && !c.is_ascii_whitespace()) {
+            i += 1;
+        }
+        let key = raw
+            .get(k_start..i)
+            .ok_or(DbxError::Truncated("attribute key"))?
+            .to_owned();
+        while b.get(i).is_some_and(|&c| c.is_ascii_whitespace() || c == b'=') {
+            i += 1;
+        }
+        let Some(&q) = b.get(i).filter(|&&c| c == b'"' || c == b'\'') else {
+            return Err(DbxError::Damaged(format!("expected quote for attr `{key}`")));
+        };
+        i += 1;
+        let v_start = i;
+        while b.get(i).is_some_and(|&c| c != q) {
+            i += 1;
+        }
+        if i >= b.len() {
+            return Err(DbxError::Truncated("unterminated attribute value"));
+        }
+        let val = xml_unescape(raw.get(v_start..i).ok_or(DbxError::Truncated("attribute value"))?);
+        i += 1;
+        attrs.push((key, val));
     }
+    Ok(attrs)
+}
 
-    fn classify_leaf(tag: String, attributes: Vec<(String, String)>, raw_text: &str) -> Element {
-        let val = unescape(raw_text.trim());
-        // Preserve empty containers (`<array name="X"></array>`, `<complex></complex>`)
-        if val.is_empty() && matches!(tag.as_str(), "partition" | "instance" | "array" | "complex") {
-            return Element {
-                tag,
-                kind: KIND_CONTAINER,
-                attributes,
-                text: String::new(),
-                raw: Vec::new(),
-                children: Vec::new(),
-            };
-        }
-        if val == "false" || val == "true" {
-            return Element {
-                tag,
-                kind: 6,
-                attributes,
-                text: String::new(),
-                raw: vec![0, u8::from(val == "true")],
-                children: Vec::new(),
-            };
-        }
-        if !val.is_empty()
-            && val.split('/').all(|part| part.parse::<i32>().is_ok())
-            && !(tag == "field" && attributes.iter().any(|(k, v)| k == "name" && v == "Name"))
-        {
-            let ints: Vec<i32> = val.split('/').filter_map(|p| p.parse::<i32>().ok()).collect();
-            let mut raw = Vec::with_capacity(2 + ints.len() * 4);
-            write_varint(&mut raw, ints.len());
-            write_varint(&mut raw, 4);
-            for v in ints {
-                raw.extend_from_slice(&v.to_be_bytes());
-            }
-            return Element {
-                tag,
-                kind: KIND_NUMBERS,
-                attributes,
-                text: String::new(),
-                raw,
-                children: Vec::new(),
-            };
-        }
-        Element {
+fn xml_classify_leaf(tag: String, attributes: Vec<(String, String)>, raw_text: &str) -> Element {
+    let val = xml_unescape(raw_text.trim());
+    // Preserve empty containers (`<array name="X"></array>`, `<complex></complex>`)
+    if val.is_empty() && matches!(tag.as_str(), "partition" | "instance" | "array" | "complex") {
+        return Element {
             tag,
-            kind: KIND_TEXT,
+            kind: KIND_CONTAINER,
             attributes,
-            text: val,
+            text: String::new(),
             raw: Vec::new(),
             children: Vec::new(),
-        }
+        };
     }
+    if val == "false" || val == "true" {
+        return Element {
+            tag,
+            kind: 6,
+            attributes,
+            text: String::new(),
+            raw: vec![0, u8::from(val == "true")],
+            children: Vec::new(),
+        };
+    }
+    if !val.is_empty()
+        && val.split('/').all(|part| part.parse::<i32>().is_ok())
+        && !(tag == "field" && attributes.iter().any(|(k, v)| k == "name" && v == "Name"))
+    {
+        let ints: Vec<i32> = val.split('/').filter_map(|p| p.parse::<i32>().ok()).collect();
+        let mut raw = Vec::with_capacity(2 + ints.len() * 4);
+        write_varint(&mut raw, ints.len());
+        write_varint(&mut raw, 4);
+        for v in ints {
+            raw.extend_from_slice(&v.to_be_bytes());
+        }
+        return Element {
+            tag,
+            kind: KIND_NUMBERS,
+            attributes,
+            text: String::new(),
+            raw,
+            children: Vec::new(),
+        };
+    }
+    Element {
+        tag,
+        kind: KIND_TEXT,
+        attributes,
+        text: val,
+        raw: Vec::new(),
+        children: Vec::new(),
+    }
+}
 
+fn xml_push_element(stack: &mut [(Element, bool)], roots: &mut Vec<Element>, elem: Element) {
+    if let Some((parent, p_has_children)) = stack.last_mut() {
+        parent.children.push(elem);
+        *p_has_children = true;
+    } else {
+        roots.push(elem);
+    }
+}
+
+/// Parses a Frostbite DBX XML document (such as produced by [`DbxFile::to_xml`]) into a [`DbxFile`].
+///
+/// # Errors
+/// Returns [`DbxError`] if the XML is malformed, truncated, or contains mismatched tags.
+pub fn from_xml(xml: &str) -> Result<DbxFile, DbxError> {
     let mut roots: Vec<Element> = Vec::new();
     let mut stack: Vec<(Element, bool)> = Vec::new(); // (elem, has_child_elements)
     let mut pos = 0usize;
-    let bytes = xml.as_bytes();
 
-    while pos < bytes.len() {
-        let Some(lt_rel) = xml[pos..].find('<') else {
+    while let Some(rest) = xml.get(pos..) {
+        let Some(lt_rel) = rest.find('<') else {
             break;
         };
-        let text_between = &xml[pos..pos + lt_rel];
+        let text_between = rest.get(..lt_rel).unwrap_or_default();
         if !text_between.trim().is_empty()
             && let Some((top, _)) = stack.last_mut()
         {
             top.text.push_str(text_between);
         }
         pos += lt_rel;
+        let Some(tag_rest) = xml.get(pos..) else {
+            break;
+        };
 
         // Skip XML declaration `<?...?>` or comments `<!--...-->`
-        if xml[pos..].starts_with("<?") {
-            let end = xml[pos..].find("?>").ok_or(DbxError::Truncated("xml decl"))?;
+        if tag_rest.starts_with("<?") {
+            let end = tag_rest.find("?>").ok_or(DbxError::Truncated("xml decl"))?;
             pos += end + 2;
             continue;
         }
-        if xml[pos..].starts_with("<!--") {
-            let end = xml[pos..].find("-->").ok_or(DbxError::Truncated("xml comment"))?;
+        if tag_rest.starts_with("<!--") {
+            let end = tag_rest.find("-->").ok_or(DbxError::Truncated("xml comment"))?;
             pos += end + 3;
             continue;
         }
 
-        let gt_rel = xml[pos..].find('>').ok_or(DbxError::Truncated("unclosed tag"))?;
-        let inner = &xml[pos + 1..pos + gt_rel];
+        let gt_rel = tag_rest.find('>').ok_or(DbxError::Truncated("unclosed tag"))?;
+        let inner = tag_rest.get(1..gt_rel).ok_or(DbxError::Truncated("unclosed tag"))?;
         pos += gt_rel + 1;
 
         if let Some(close_name) = inner.strip_prefix('/') {
@@ -638,14 +657,9 @@ pub fn from_xml(xml: &str) -> Result<DbxFile, DbxError> {
                 )));
             }
             if !has_children {
-                elem = classify_leaf(elem.tag, elem.attributes, &elem.text);
+                elem = xml_classify_leaf(elem.tag, elem.attributes, &elem.text);
             }
-            if let Some((parent, p_has_children)) = stack.last_mut() {
-                parent.children.push(elem);
-                *p_has_children = true;
-            } else {
-                roots.push(elem);
-            }
+            xml_push_element(&mut stack, &mut roots, elem);
             continue;
         }
 
@@ -655,35 +669,24 @@ pub fn from_xml(xml: &str) -> Result<DbxFile, DbxError> {
             (inner.trim(), false)
         };
         let split_at = body.find(char::is_whitespace).unwrap_or(body.len());
-        let tag = body[..split_at].to_owned();
-        let attrs = parse_attrs(&body[split_at..])?;
+        let tag = body.get(..split_at).unwrap_or_default().to_owned();
+        let attrs = xml_parse_attrs(body.get(split_at..).unwrap_or_default())?;
 
         if self_closing {
-            let elem = if matches!(tag.as_str(), "partition" | "instance" | "array" | "complex") {
-                Element {
-                    tag,
-                    kind: KIND_CONTAINER,
-                    attributes: attrs,
-                    text: String::new(),
-                    raw: Vec::new(),
-                    children: Vec::new(),
-                }
+            let kind = if matches!(tag.as_str(), "partition" | "instance" | "array" | "complex") {
+                KIND_CONTAINER
             } else {
-                Element {
-                    tag,
-                    kind: KIND_TEXT,
-                    attributes: attrs,
-                    text: String::new(),
-                    raw: Vec::new(),
-                    children: Vec::new(),
-                }
+                KIND_TEXT
             };
-            if let Some((parent, p_has_children)) = stack.last_mut() {
-                parent.children.push(elem);
-                *p_has_children = true;
-            } else {
-                roots.push(elem);
-            }
+            let elem = Element {
+                tag,
+                kind,
+                attributes: attrs,
+                text: String::new(),
+                raw: Vec::new(),
+                children: Vec::new(),
+            };
+            xml_push_element(&mut stack, &mut roots, elem);
         } else {
             let elem = Element {
                 tag,
@@ -776,13 +779,28 @@ mod tests {
 \t\t<array name=\"EmptyArr\" />\r\n\
 \t</instance>\r\n\
 </partition>\r\n";
-        let dbx = from_xml(xml).expect("from_xml");
-        let bin = dbx.to_bytes();
-        let reparsed = parse(&bin).expect("reparse");
-        let inst = reparsed.instance("a4f67c0a-1e1d-11dd-83ba-c00ebbc570d0").expect("inst");
-        assert_eq!(inst.child("MaxHealth").and_then(Element::as_i32s), Some(vec![1120403456]));
-        assert_eq!(inst.child("RegenerateHealth").and_then(Element::as_i32s), Some(vec![0]));
-        assert_eq!(inst.child("HasAutomaticAmmoPickup").map(|e| e.raw.as_slice()), Some([0u8, 0].as_slice()));
-        assert_eq!(inst.child("EmptyArr").map(|e| e.kind), Some(KIND_CONTAINER));
+        let dbx = from_xml(xml).ok();
+        assert!(dbx.is_some());
+        if let Some(dbx) = dbx {
+            let bin = dbx.to_bytes();
+            let reparsed = parse(&bin).ok();
+            assert!(reparsed.is_some());
+            if let Some(reparsed) = reparsed {
+                let inst = reparsed.instance("a4f67c0a-1e1d-11dd-83ba-c00ebbc570d0");
+                assert!(inst.is_some());
+                if let Some(inst) = inst {
+                    assert_eq!(
+                        inst.child("MaxHealth").and_then(Element::as_i32s),
+                        Some(vec![1_120_403_456])
+                    );
+                    assert_eq!(inst.child("RegenerateHealth").and_then(Element::as_i32s), Some(vec![0]));
+                    assert_eq!(
+                        inst.child("HasAutomaticAmmoPickup").map(|e| e.raw.as_slice()),
+                        Some([0u8, 0].as_slice())
+                    );
+                    assert_eq!(inst.child("EmptyArr").map(|e| e.kind), Some(KIND_CONTAINER));
+                }
+            }
+        }
     }
 }

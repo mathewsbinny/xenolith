@@ -1,6 +1,6 @@
 # Software Architecture & Design Specification
 
-**Project:** `xb360-to-pc-porting-tools`  
+**Project:** `xenolith` (Xbox 360 to PC Porting Toolkit)  
 **Language / Edition:** Rust 2024 (`rust-version = "1.100"`)  
 **Architecture Style:** Layered Modular Monolith (Cargo Workspace)
 
@@ -8,7 +8,7 @@
 
 ## 1. Purpose & Scope
 
-`xb360-to-pc-porting-tools` is a pure-Rust library suite for reading Xbox 360 media containers, decoding Xbox 360 hardware-specific formats (Xenos GPU textures, Xenos shaders, XMA2 audio), converting third-party middleware assets (Havok Physics, RAD Granny 2), and adapting those primitives to specific game engines (starting with Frostbite 1 / 1.5, and designed for side-by-side expansion to Unreal Engine 3, MT Framework, etc.).
+`xenolith` is a pure-Rust library suite and desktop/CLI application for reading Xbox 360 media containers, decoding Xbox 360 hardware-specific formats (Xenos GPU textures, Xenos shaders, XMA2 audio), converting third-party middleware assets (Havok Physics, RAD Granny 2), and adapting those primitives to specific game engines (starting with Frostbite 1 / 1.5, and designed for side-by-side expansion to Unreal Engine 3, MT Framework, etc.).
 
 ### Non-Goals
 * **No copyrighted game data or SDK headers** are stored in this repository. All tests operate on synthetic, self-contained binary inputs.
@@ -71,7 +71,7 @@ flowchart TD
 
 | Layer | Directory | Responsibility | Coupling Rule |
 |---|---|---|---|
-| **Apps** | `apps/` | User-facing desktop GUI (`xenolith`, `bin/xenolith.exe`) and future CLI entrypoints. | Feature-gated over `engines/`, `middleware/`, and `platform/` (e.g. `default = ["frostbite", "xma"]`). |
+| **Apps** | `apps/` | User-facing desktop GUI & headless CLI (`xenolith`, `target/release/xenolith.exe`). | Feature-gated over `engines/`, `middleware/`, and `platform/` (e.g. `default = ["frostbite", "xma"]`). |
 | **Platform** | `platform/` | Xbox 360 hardware, OS, and GPU/audio formats (STFS, XISO, Xenos tiling, Xenos microcode, XMA2). | **Engine-agnostic & middleware-agnostic.** Operates on raw payloads and explicit descriptors (`SurfaceDesc`, `Shader`, `Riff`). |
 | **Middleware** | `middleware/` | Third-party SDK binary formats shipped across many Xbox 360 titles (Havok Physics, RAD Granny 2). | **Engine-agnostic.** Parameterized by metadata (e.g., Havok `Classes` tables) rather than hardcoded game structs. |
 | **Engines** | `engines/` | Engine-specific container headers, format-ID enums, vertex layouts, audio framing, and PE class extractors. | Owns all engine headers (e.g., Frostbite's 92-byte `XenonTexture`/`ITexture` header) and delegates heavy work to `platform/` and `middleware/`. |
@@ -119,6 +119,7 @@ The workspace is **MIT-licensed** (`LICENSE`), with one strictly isolated except
 
 * **`platform/x360-xma`** is a Rust port of FFmpeg's WMA Pro / XMA2 decoder (`libavcodec/wmaprodec.c`) and is licensed under **LGPL-2.1-or-later** (`platform/x360-xma/LICENSE`).
 * Keeping `x360-xma` as its own leaf crate ensures consumers who require a strictly MIT-only dependency graph can omit `x360-xma` without affecting any other crate.
+* **Planned MIT-only Frostbite consumption:** Gating `x360-xma` behind an optional `xma` Cargo feature in `x360-frostbite` (and optionally splitting out a PC/schema-agnostic `engines/frostbite-core` crate) allows downstream MIT workspaces (`battlefield-opfor`'s `opfor-cli` and the planned `frostbite-tool-suite`) to share all Frostbite format parsers directly in memory while keeping `xenolith.exe` as the separate LGPL-2.1 process boundary strictly for XMA2 audio transcoding. See [Ecosystem & Tool Suite Roadmap](ECOSYSTEM_ROADMAP.md).
 
 ---
 

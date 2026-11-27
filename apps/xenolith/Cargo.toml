@@ -14,7 +14,7 @@ path = "src/main.rs"
 [features]
 default = ["frostbite", "xma"]
 frostbite = ["dep:x360-frostbite"]
-xma = ["dep:x360-xma"]
+xma = ["dep:x360-xma", "x360-frostbite?/xma"]
 
 [dependencies]
 eframe.workspace = true
@@ -28,7 +28,7 @@ x360-xenos-texture.workspace = true
 x360-xenos-shader.workspace = true
 x360-havok.workspace = true
 x360-granny.workspace = true
-x360-frostbite = { workspace = true, optional = true }
+x360-frostbite = { workspace = true, optional = true, default-features = false }
 x360-xma = { workspace = true, optional = true }
 
 [lints]

@@ -7,7 +7,7 @@
 
 ## 2. Build, Test, Lint, and Docs
 
-Run all commands from the repository root (`xb360-to-pc-porting-tools/`):
+Run all commands from the repository root (`xenolith/`):
 
 ```powershell
 # Run all unit, property (proptest), integration, and doc tests
@@ -43,7 +43,11 @@ cargo build --release -p xenolith
 .\target\release\xenolith.exe compile-xenos-shaders --profile dx9 Single.res out_dx9/
 .\target\release\xenolith.exe compile-xenos-shaders --profile dx10 Single.res out_dx10/
 .\target\release\xenolith.exe upgrade-dbx old.dbx upgraded.dbx
+.\target\release\xenolith.exe dbx-to-xml level.dbx level.xml
+.\target\release\xenolith.exe xml-to-dbx level.xml level.dbx
 .\target\release\xenolith.exe upgrade-hpd bfbc1_pathdata.hpd pc_pathdata.hpd
+.\target\release\xenolith.exe make-sector-offsets sp_01_greenacres Infantry 0 0 sector_offsets.dbx
+.\target\release\xenolith.exe register-level startup-00.fbrb mp_beachhead_day1 MP_012GR
 .\target\release\xenolith.exe unwrap-bink greenacres.res greenacres.bik
 ```
 
@@ -135,6 +139,6 @@ Because the workspace is a layered modular monolith, you can depend on only the 
 
 ```toml
 [dependencies]
-x360-xenos-texture = { path = "../xb360-to-pc-porting-tools/platform/x360-xenos-texture" }
-x360-xenos-shader  = { path = "../xb360-to-pc-porting-tools/platform/x360-xenos-shader" }
+x360-xenos-texture = { path = "../xenolith/platform/x360-xenos-texture" }
+x360-xenos-shader  = { path = "../xenolith/platform/x360-xenos-shader" }
 ```

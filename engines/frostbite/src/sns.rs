@@ -492,7 +492,13 @@ pub fn port_streaming_sounds_archive(
             }
         }
     }
-    (crate::fbrb::FbrbArchive { version: sns_arc.version, entries }, report)
+    (
+        crate::fbrb::FbrbArchive {
+            version: sns_arc.version,
+            entries,
+        },
+        report,
+    )
 }
 
 #[cfg(test)]

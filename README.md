@@ -9,6 +9,7 @@ Extracted from the console-to-PC conversion stack of `bfbc2-tool-suite` and orga
 * **[Architecture & Design Specification](docs/ARCHITECTURE.md)** — Layered design, data-flow diagrams, safety/determinism invariants, licensing isolation, and extension playbook.
 * **[API Reference](docs/API_REFERENCE.md)** — Complete crate, module, type, and function reference.
 * **[Quick Start Guide](docs/QUICKSTART.md)** — Prerequisites, build/test commands, and runnable Rust examples.
+* **[Ecosystem & Tool Suite Roadmap](docs/ECOSYSTEM_ROADMAP.md)** — 3-repo architecture across `xenolith`, `battlefield-opfor`, and the planned game-agnostic `frostbite-tool-suite` (BFBC1, BF1943, BFBC2/OPFOR, and MoH 2010 MP).
 * **[Engine & Middleware Research](docs/ENGINE_AND_MIDDLEWARE_RESEARCH.md)** — Survey of targetable Xbox 360 game engines, middleware formats, reuse analysis, and expansion roadmap.
 
 ## Workspace Layout

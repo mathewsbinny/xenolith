@@ -31,12 +31,10 @@ Usage:
   xenolith inspect-apt <in.res>                List FSCommand, extern.*, and console prompt symbols
   xenolith unwrap-bink <in.res> <out.bik>      Strip RES\\x02 wrapper from BFBC1 movie -> .bik
   xenolith upgrade-hpd <in.hpd> <out.hpd>      Upgrade BFBC1 Kynogon HPD v1 navmesh -> FB 1.5 v2
-  xenolith make-sector-offsets <lvl> <kind> <pguid> <iguid> <x> <z> <out.dbx>
-                                               Generate Frostbite 1.5 PathdataSectorOffsets DBX
-  xenolith register-level <startup.fbrb> <level> [donor]
-                                               Clone donor LevelDescription + register in LevelListQuery
   xenolith make-sector-offsets <lvl> <layer> <x> <z> <out.dbx>
                                                Build FB 1.5 PathdataSectorOffsets binary DBX
+  xenolith register-level <startup.fbrb> <level> [donor]
+                                               Clone donor LevelDescription + register in LevelListQuery
   xenolith dedup-fbrb <lvl> <common> <out>     Remove shared common entries from BFBC1 level FbRB
   xenolith export-atlas-sprite <fbrb> <prefix> <id> <out.png>
                                                Crop a UI.UITextureAtlasInfo sprite to RGBA PNG
@@ -51,6 +49,72 @@ fn outln(msg: &str) {
 fn errln(msg: &str) {
     let mut err = std::io::stderr().lock();
     let _ = writeln!(err, "error: {msg}");
+}
+
+#[cfg(feature = "frostbite")]
+struct LevelRewrite<'a> {
+    old_guid: &'a str,
+    new_guid: &'a str,
+    old_desc: &'a str,
+    new_desc: &'a str,
+    old_lvl: &'a str,
+    new_lvl: &'a str,
+    old_id: &'a str,
+    new_id: &'a str,
+}
+
+#[cfg(feature = "frostbite")]
+fn rewrite_level_desc_elem(e: &mut x360_frostbite::dbx::Element, rw: &LevelRewrite<'_>) {
+    for (_, v) in &mut e.attributes {
+        if !rw.old_guid.is_empty() && v.eq_ignore_ascii_case(rw.old_guid) {
+            rw.new_guid.clone_into(v);
+        } else if v.eq_ignore_ascii_case(rw.old_id) {
+            rw.new_id.clone_into(v);
+        }
+    }
+    if !e.text.is_empty() {
+        if e.text.eq_ignore_ascii_case(rw.old_desc) {
+            rw.new_desc.clone_into(&mut e.text);
+        } else if e.text.eq_ignore_ascii_case(rw.old_lvl) {
+            rw.new_lvl.clone_into(&mut e.text);
+        } else if e.text.contains(rw.old_desc) {
+            e.text = e.text.replace(rw.old_desc, rw.new_desc);
+        } else if e.text.contains(rw.old_lvl) {
+            e.text = e.text.replace(rw.old_lvl, rw.new_lvl);
+        }
+    }
+    for c in &mut e.children {
+        rewrite_level_desc_elem(c, rw);
+    }
+}
+
+#[cfg(feature = "frostbite")]
+fn add_to_first_array(e: &mut x360_frostbite::dbx::Element, items: &[String]) -> bool {
+    if e.tag == "array" {
+        for want in items {
+            let exists = e
+                .children
+                .iter()
+                .any(|c| c.tag == "item" && c.text.eq_ignore_ascii_case(want));
+            if !exists {
+                e.children.push(x360_frostbite::dbx::Element {
+                    tag: "item".into(),
+                    kind: x360_frostbite::dbx::KIND_TEXT,
+                    attributes: Vec::new(),
+                    text: want.clone(),
+                    raw: Vec::new(),
+                    children: Vec::new(),
+                });
+            }
+        }
+        return true;
+    }
+    for c in &mut e.children {
+        if add_to_first_array(c, items) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Runs headless CLI mode for `args` (excluding `argv[0]`). Returns process exit code.
@@ -209,9 +273,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
             let mut i = 1usize;
             while let Some(arg) = args.get(i) {
                 if arg == "--waves" {
-                    let val = args
-                        .get(i + 1)
-                        .ok_or_else(|| "missing path after --waves".to_owned())?;
+                    let val = args.get(i + 1).ok_or_else(|| "missing path after --waves".to_owned())?;
                     wave_paths.push(val.clone());
                     i += 2;
                 } else {
@@ -370,7 +432,9 @@ fn dispatch(args: &[String]) -> Result<(), String> {
                 return Err("usage: xenolith xml-to-dbx <in.xml> <out.dbx>".into());
             };
             let xml = fs::read_to_string(inp).map_err(|e| format!("read {inp}: {e}"))?;
-            let bin = x360_frostbite::dbx::from_xml(&xml).map_err(|e| e.to_string())?.to_bytes();
+            let bin = x360_frostbite::dbx::from_xml(&xml)
+                .map_err(|e| e.to_string())?
+                .to_bytes();
             fs::write(outp, &bin).map_err(|e| format!("write {outp}: {e}"))?;
             outln(&format!("Compiled binary DBX -> {outp} ({} bytes)", bin.len()));
             Ok(())
@@ -435,13 +499,9 @@ fn dispatch(args: &[String]) -> Result<(), String> {
         }
         #[cfg(feature = "frostbite")]
         "make-sector-offsets" => {
-            let (Some(lvl), Some(layer), Some(xs), Some(zs), Some(outp)) = (
-                args.get(1),
-                args.get(2),
-                args.get(3),
-                args.get(4),
-                args.get(5),
-            ) else {
+            let (Some(lvl), Some(layer), Some(xs), Some(zs), Some(outp)) =
+                (args.get(1), args.get(2), args.get(3), args.get(4), args.get(5))
+            else {
                 return Err(
                     "usage: xenolith make-sector-offsets <level_name> <Infantry|Vehicle> <x> <z> <out.dbx>".into(),
                 );
@@ -493,98 +553,57 @@ fn dispatch(args: &[String]) -> Result<(), String> {
                 let d = h.to_be_bytes();
                 format!(
                     "{:02X}{:02X}{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-                    d[0], d[1], d[2], d[3], d[4], d[5], (d[6] & 0x0F) | 0x50, d[7], (d[8] & 0x3F) | 0x80, d[9],
-                    d[10], d[11], d[12], d[13], d[14], d[15]
+                    d[0],
+                    d[1],
+                    d[2],
+                    d[3],
+                    d[4],
+                    d[5],
+                    (d[6] & 0x0F) | 0x50,
+                    d[7],
+                    (d[8] & 0x3F) | 0x80,
+                    d[9],
+                    d[10],
+                    d[11],
+                    d[12],
+                    d[13],
+                    d[14],
+                    d[15]
                 )
             };
             let old_guid = desc_dbx
                 .partition()
                 .and_then(|p| p.attr("guid"))
-                .map(ToOwned::to_owned)
-                .unwrap_or_default();
+                .map_or_default(ToOwned::to_owned);
             let old_desc_path = format!("Levels/{donor}_description");
             let new_desc_path = format!("Levels/{level}_description");
             let old_lvl_path = format!("Levels/{donor}");
             let new_lvl_path = format!("Levels/{level}");
             let old_id = format!("{donor}_description");
             let new_id = format!("{level}_description");
-            #[allow(clippy::too_many_arguments)]
-            fn rewrite_elem(
-                e: &mut x360_frostbite::dbx::Element,
-                old_guid: &str,
-                new_guid: &str,
-                old_desc: &str,
-                new_desc: &str,
-                old_lvl: &str,
-                new_lvl: &str,
-                old_id: &str,
-                new_id: &str,
-            ) {
-                for (_, v) in &mut e.attributes {
-                    if !old_guid.is_empty() && v.eq_ignore_ascii_case(old_guid) {
-                        *v = new_guid.to_owned();
-                    } else if v.eq_ignore_ascii_case(old_id) {
-                        *v = new_id.to_owned();
-                    }
-                }
-                if !e.text.is_empty() {
-                    if e.text.eq_ignore_ascii_case(old_desc) {
-                        e.text = new_desc.to_owned();
-                    } else if e.text.eq_ignore_ascii_case(old_lvl) {
-                        e.text = new_lvl.to_owned();
-                    } else if e.text.contains(old_desc) {
-                        e.text = e.text.replace(old_desc, new_desc);
-                    } else if e.text.contains(old_lvl) {
-                        e.text = e.text.replace(old_lvl, new_lvl);
-                    }
-                }
-                for c in &mut e.children {
-                    rewrite_elem(c, old_guid, new_guid, old_desc, new_desc, old_lvl, new_lvl, old_id, new_id);
-                }
-            }
+            let rw = LevelRewrite {
+                old_guid: &old_guid,
+                new_guid: &new_guid,
+                old_desc: &old_desc_path,
+                new_desc: &new_desc_path,
+                old_lvl: &old_lvl_path,
+                new_lvl: &new_lvl_path,
+                old_id: &old_id,
+                new_id: &new_id,
+            };
             for r in &mut desc_dbx.roots {
-                rewrite_elem(
-                    r,
-                    &old_guid,
-                    &new_guid,
-                    &old_desc_path,
-                    &new_desc_path,
-                    &old_lvl_path,
-                    &new_lvl_path,
-                    &old_id,
-                    &new_id,
-                );
+                rewrite_level_desc_elem(r, &rw);
             }
             let new_desc_bytes = desc_dbx.to_bytes();
+            let new_desc_len = new_desc_bytes.len();
 
-            let mut llq_dbx = x360_frostbite::dbx::parse(&arc.entries[llq_idx].data).map_err(|e| e.to_string())?;
-            fn add_to_first_array(e: &mut x360_frostbite::dbx::Element, items: &[String]) -> bool {
-                if e.tag == "array" {
-                    for want in items {
-                        let exists = e
-                            .children
-                            .iter()
-                            .any(|c| c.tag == "item" && c.text.eq_ignore_ascii_case(want));
-                        if !exists {
-                            e.children.push(x360_frostbite::dbx::Element {
-                                tag: "item".into(),
-                                kind: x360_frostbite::dbx::KIND_TEXT,
-                                attributes: Vec::new(),
-                                text: want.clone(),
-                                raw: Vec::new(),
-                                children: Vec::new(),
-                            });
-                        }
-                    }
-                    return true;
-                }
-                for c in &mut e.children {
-                    if add_to_first_array(c, items) {
-                        return true;
-                    }
-                }
-                false
-            }
+            let llq_data = arc
+                .entries
+                .get(llq_idx)
+                .ok_or_else(|| "LevelListQuery.dbx index out of bounds".to_owned())?
+                .data
+                .as_slice();
+            let mut llq_dbx = x360_frostbite::dbx::parse(llq_data).map_err(|e| e.to_string())?;
             let want_items = vec![format!("{level_lower}.dbx"), format!("{level_lower}_description.dbx")];
             for r in &mut llq_dbx.roots {
                 if add_to_first_array(r, &want_items) {
@@ -592,25 +611,30 @@ fn dispatch(args: &[String]) -> Result<(), String> {
                 }
             }
             let new_llq_bytes = llq_dbx.to_bytes();
-            arc.entries[llq_idx].data = new_llq_bytes.clone();
+            let new_llq_len = new_llq_bytes.len();
+            if let Some(llq_entry) = arc.entries.get_mut(llq_idx) {
+                llq_entry.data = new_llq_bytes;
+            }
 
-            if let Some(existing) = arc.entries.iter_mut().find(|e| e.path.to_ascii_lowercase() == target_key) {
-                existing.data = new_desc_bytes.clone();
+            if let Some(existing) = arc
+                .entries
+                .iter_mut()
+                .find(|e| e.path.to_ascii_lowercase() == target_key)
+            {
+                existing.data = new_desc_bytes;
             } else {
                 arc.entries.push(x360_frostbite::fbrb::FbrbEntry {
                     path: target_name.clone(),
                     ext: "<non-resource>".into(),
                     flags: donor_entry.flags,
-                    data: new_desc_bytes.clone(),
+                    data: new_desc_bytes,
                 });
             }
 
             let out_bytes = arc.to_bytes(true).map_err(|e| e.to_string())?;
             fs::write(startup_path, &out_bytes).map_err(|e| format!("write {startup_path}: {e}"))?;
             outln(&format!(
-                "Registered {target_name} ({} B) + LevelListQuery ({} B) in {startup_path}",
-                new_desc_bytes.len(),
-                new_llq_bytes.len()
+                "Registered {target_name} ({new_desc_len} B) + LevelListQuery ({new_llq_len} B) in {startup_path}"
             ));
             Ok(())
         }
@@ -623,8 +647,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
             let com_raw = fs::read(common_path).map_err(|e| format!("read {common_path}: {e}"))?;
             let lvl_arc = x360_frostbite::fbrb::FbrbArchive::parse(&lvl_raw).map_err(|e| e.to_string())?;
             let com_arc = x360_frostbite::fbrb::FbrbArchive::parse(&com_raw).map_err(|e| e.to_string())?;
-            let (deduped, removed) =
-                x360_frostbite::bfbc1::deduplicate_common_entries_guid_aware(&lvl_arc, &com_arc);
+            let (deduped, removed) = x360_frostbite::bfbc1::deduplicate_common_entries_guid_aware(&lvl_arc, &com_arc);
             let bytes = deduped.to_bytes(true).map_err(|e| e.to_string())?;
             fs::write(outp, &bytes).map_err(|e| format!("write {outp}: {e}"))?;
             outln(&format!(

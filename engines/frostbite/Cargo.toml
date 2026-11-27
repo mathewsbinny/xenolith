@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+default = ["xma"]
+xma = ["dep:x360-xma"]
+
 [dependencies]
 thiserror.workspace = true
 flate2.workspace = true
@@ -14,7 +18,7 @@ rayon.workspace = true
 memchr.workspace = true
 regex.workspace = true
 x360-containers.workspace = true
-x360-xma.workspace = true
+x360-xma = { workspace = true, optional = true }
 x360-xenos-shader.workspace = true
 x360-xenos-texture.workspace = true
 x360-havok.workspace = true

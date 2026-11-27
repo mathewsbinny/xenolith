@@ -696,9 +696,7 @@ pub fn soot_mesh(x: &[u8]) -> Res<Vec<u8>> {
         o += ib + 256;
     }
     if o != len {
-        return fail(format!(
-            "soot mesh: {nparts} parts end at {o} of a {len}-byte file"
-        ));
+        return fail(format!("soot mesh: {nparts} parts end at {o} of a {len}-byte file"));
     }
     Ok(out)
 }

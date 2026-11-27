@@ -31,4 +31,5 @@ pub use x360_granny as granny;
 pub use x360_havok as havok;
 pub use x360_xenos_shader as shader;
 pub use x360_xenos_texture as xenos_texture;
+#[cfg(feature = "xma")]
 pub use x360_xma as xma;
