@@ -2,6 +2,8 @@
 
 **Scope:** Survey of 7th-generation (Xbox 360, 2005–2015) game engines and third-party middleware that **Xenolith** can support, ranked by technical feasibility, reuse of existing crates (`platform/` and `middleware/`), and PC-porting / preservation value.
 
+**Status (checked 2026-11-28):** a research survey, not a plan. None of the crates it proposes exists yet; xenolith's work stays on Frostbite 1 / 1.5. Where the survey and the code differ, the notes marked *2026-11-28* say what the code has.
+
 ---
 
 ## 1. Executive Summary: The Reuse Multiplier
@@ -22,7 +24,7 @@ Before adding many new engines, adding three small platform crates multiplies va
 
 1. **`platform/x360-xmem` (XMemCompress / LZX Decompressor):** Microsoft's XDK LZX stream format (`0x0FF512ED` / raw LZX blocks) is used by **Unreal Engine 3**, **Source**, **RAGE**, **XNA**, **Blam!**, and many XBLA titles.
 2. **`platform/x360-pc-export` (Standard PC Asset Writers):** Clean pure-Rust writers for **DDS** (DX9/DX10 headers for untiled `x360-xenos-texture` output), **WAV** (already prototyped in `xenolith`), and **glTF 2.0 / OBJ** (for converted meshes & skeletons).
-3. **`platform/x360-xex` (XEX2 Executable Reader):** Parses Xbox 360 `.xex` headers, LZX-compressed PE images, and import/export tables—enabling automated extraction of Havok `hkClass` tables, shader tables, and string tables directly from console executables.
+3. **`platform/x360-xex` (XEX2 Executable Reader):** *2026-11-28: the header part exists as `x360-containers::xex` (optional headers, security info, SHA-1 page-digest verification of an already-decoded image); decompressing the LZX-compressed PE image does not, and needs `x360-xmem`.* Parses Xbox 360 `.xex` headers, LZX-compressed PE images, and import/export tables—enabling automated extraction of Havok `hkClass` tables, shader tables, and string tables directly from console executables.
 
 ---
 
@@ -63,7 +65,7 @@ Third-party middleware was ubiquitous on Xbox 360. Supporting a middleware crate
 | Middleware | Xbox 360 Formats | PC Target | Feasibility | Notes |
 |---|---|---|---|---|
 | **Scaleform GFx** | `.gfx` (`CFX`/`GFX` header + Flash SWF tags + Xenos DDS/TGA) | PC `.gfx` / `.swf` | **Tier 1 (Easy–Medium)** | Used across *Mass Effect*, *Batman*, *Borderlands*, *Crysis*, *Skyrim*, *Deus Ex*. Header is nearly standard SWF; textures reuse `x360-xenos-texture`. |
-| **EA APT** *(exists in `bfbc2-tool-suite`)* | `.apt` / `.const` / `.dat` | PC `.apt` | **Tier 1 (Easy)** | Shared across EA's 2006–2012 catalog (*BFBC1/2*, *C&C 3/RA3*, *Lord of the Rings*, *MoH*). |
+| **EA APT** *(exists in `bfbc2-tool-suite`, and as `x360-frostbite::apt`)* | `.apt` / `.const` / `.dat` | PC `.apt` | **Tier 1 (Easy)** | Shared across EA's 2006–2012 catalog (*BFBC1/2*, *C&C 3/RA3*, *Lord of the Rings*, *MoH*). |
 | **RAD Bink Video** | `.bik` (Bink 1 / Bink 2) | `.bik` (platform-agnostic!) | **Tier 1 (Trivial)** | `.bik` bitstreams are endian-independent; only container extraction is needed. |
 | **CRI Sofdec / USM** | `.sfd` (MPEG-1/2 + ADX), `.usm` | MP4 / MPEG + WAV | **Tier 2 (Medium)** | Common in Japanese 360 titles (Sega, Bandai Namco, Capcom, PlatinumGames). |
 | **SpeedTree** | `.spt` (v4/v5), `.srt` (v6+) | PC `.spt`/`.srt` or glTF | **Tier 2 (Medium)** | Used in *Oblivion*, *Gears*, *Mass Effect*, *Dragon Age*, *Batman*, *Fable*. |
@@ -75,7 +77,7 @@ Third-party middleware was ubiquitous on Xbox 360. Supporting a middleware crate
 ### Tier 1 — Highest ROI & Direct Reuse
 
 #### 1. Frostbite 1 / 1.5 *(Implemented)* & Frostbite 2 / 3 *(Natural Expansion)*
-* **Frostbite 1 / 1.5 (`engines/frostbite`):** Already supports BFBC1, BFBC2, BF1943, and Medal of Honor (2010 MP) textures, meshes, terrain/water/soot, audio, Havok classes, and AimAnimation.
+* **Frostbite 1 / 1.5 (`engines/frostbite`):** Already supports BFBC1, BFBC2, and BF1943 textures, meshes, terrain/water/soot, audio, Havok classes, and AimAnimation. *2026-11-28: Medal of Honor (2010 MP) shares the formats but has no code or test of its own in xenolith; it is untested.*
 * **Frostbite 2 / 3 (planned sibling or submodule):** Uses **Superbundles** (`.sb`/`.toc`), **CAS** (`cas.cat`), **EBX**, **RES**, and **Chunks**. Reuses `x360-xenos-texture`, `x360-xenos-shader`, `x360-xma`, `x360-havok` (tagfiles), and EA audio.
 * **Notable 360 titles:** *Battlefield: Bad Company* (console-exclusive!), *Battlefield 1943* (console-exclusive!), *BF3*, *NFS: The Run*, *Army of Two: The Devil's Cartel*.
 
@@ -168,7 +170,7 @@ Third-party middleware was ubiquitous on Xbox 360. Supporting a middleware crate
 ### Phase 1 — Platform Force Multipliers (`platform/`)
 1. **`platform/x360-xmem`** — Pure-Rust XMemCompress (LZX) decompressor.
 2. **`platform/x360-pc-export`** — Standard PC **DDS** (DX9/DX10), **WAV**, and **glTF 2.0** writers so *every* engine adapter can export universal PC assets immediately.
-3. **`platform/x360-xex`** — XEX2 header & embedded PE extractor.
+3. **`platform/x360-xex`** — XEX2 embedded PE extractor (the header reader exists in `x360-containers::xex`).
 
 ### Phase 2 — High-Leverage Middleware (`middleware/`)
 1. **`middleware/ea-audio`** — Promote EA-XAS / Wave / SPS / SNR / SNS out of `engines/frostbite` so all EA engines share it.

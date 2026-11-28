@@ -1,6 +1,22 @@
 # Frostbite 1.0–1.5 Ecosystem & Tool Suite Roadmap
 
-This document defines the target architecture across **Xenolith** (`xenolith`), **Battlefield OPFOR** (`battlefield-opfor`), and the planned **Frostbite Tool Suite** (`frostbite-tool-suite`, evolving from `bfbc2-tool-suite`, `bf1943-tool-suite`, and `project-opfor-moh` research).
+This document defined the target architecture across **Xenolith** (`xenolith`), **Battlefield OPFOR** (`battlefield-opfor`), and a proposed **Frostbite Tool Suite** (`frostbite-tool-suite`, evolving from `bfbc2-tool-suite`, `bf1943-tool-suite`, and `project-opfor-moh` research).
+
+## Status (checked 2026-11-28)
+
+Parts of this roadmap are done and parts are superseded. What holds today:
+
+| Item | State (2026-11-28) |
+|---|---|
+| Phase 1.1: `xma` feature in `x360-frostbite` | **Done** (commit e2bd23c): `engines/frostbite/Cargo.toml` has `default = ["xma"]`, and `apps/xenolith` forwards it (`xma = ["dep:x360-xma", "x360-frostbite?/xma"]`). Built with `default-features = false`, a crate links no LGPL code. |
+| Phase 1.2: `engines/frostbite-core` | **Not started; its shape changed.** The plan of round XM0 (2026-11-27) is to *move* the suite's format crates (`bc2-formats`, family by family, round XM3) into `frostbite-core` and delete xenolith's own rewrites of FbRB, DBX and APT, which have known defects (see the [API reference](API_REFERENCE.md#3-engine-adapters-engines)). It is not a fresh rewrite. |
+| Phase 2: `opfor-cli` on xenolith's MIT crates | **Done.** battlefield-opfor's `crates/opfor-cli/Cargo.toml` depends on `x360-containers` and `x360-frostbite` (`default-features = false`) pinned to rev e2bd23c; it reads FbRB / STFS through them and converts DBX in memory (`x360_frostbite::dbx::{parse, from_xml}`). It still runs `utility/xenolith.exe` for the console ports. |
+| `dinput8.dll` in the battlefield-opfor release | **Being retired** (2026-11-28): battlefield-opfor's host (`OPFOREngine.exe`) replaces the proxy, and a live round is deleting `crates/opfor-dll`. |
+| Section 4: `frostbite-tool-suite` | **Superseded.** The suite stays `bfbc2-tool-suite` (the editor, NavKit, the specification) and is to depend on xenolith by version tag; other Frostbite games (MoH 2010, BF3 / BF4) are a later goal of the suite, not a new repository. The section is kept below as the original proposal. |
+| The shader translator | **Forked** (2026-11-27): the suite's `bc2-shader` has the forward-jump emitter that `x360-xenos-shader` lacks on main; a live round is syncing them, and round XM4 is to move `bc2-shader` into xenolith. |
+
+The three repositories' current relations, allowed and forbidden dependency edges and versioning rules are kept in
+battlefield-opfor's knowledge base (`docs/architecture/`), which is updated as rounds land.
 
 ---
 
@@ -58,14 +74,14 @@ flowchart TD
 
 ## 3. Deduplicating `battlefield-opfor` and `xenolith`
 
-### Phase 1: Prepare `xenolith` for MIT-Only Library Consumers
+### Phase 1: Prepare `xenolith` for MIT-Only Library Consumers (1.1 done; 1.2 changed, see the status table)
 1. **Feature-gate `x360-xma` inside `x360-frostbite`**:
    - Move `x360-xma` behind `[features] default = ["xma"]` in `engines/frostbite/Cargo.toml` so downstream MIT crates (`opfor-cli`, `frostbite-tool-suite`) can depend on `x360-frostbite` with `default-features = false` without pulling LGPL-2.1 code.
 2. **Extract `engines/frostbite-core` (optional, recommended for `frostbite-tool-suite`)**:
    - Host schema-agnostic, version-aware Frostbite 1.0–1.5 readers/writers (`fbrb`, `dbx`, `apt`, `terrain`, `water`, `meshdata`, `hpd`, `shader_db`) with **zero Xbox 360 hardware dependencies**.
    - Keep `x360-frostbite` focused on Xbox 360 → PC conversion and Frostbite 1.0 → 1.5 migration (`bfbc1/`, `bundle_port`, `menu_export`, `wavport`).
 
-### Phase 2: Wire `opfor-cli` to `xenolith` MIT Crates
+### Phase 2: Wire `opfor-cli` to `xenolith` MIT Crates (done)
 1. Add `x360-containers` and `x360-frostbite` (`default-features = false`, pinned git rev + local `[patch]` override) to `battlefield-opfor/crates/opfor-cli/Cargo.toml`.
 2. Delete duplicated `FbRB`, `XISO`, and `STFS` parsers from `opfor-cli` (`bfbc1.rs`, `port.rs`). *(EA APT `BIGF` has already been deduplicated inside `battlefield-opfor` via `opfor-apt::bigf`.)*
 3. Replace `%TEMP%` `dbx-to-xml` / `xml-to-dbx` subprocess roundtrips in `opfor-cli` with direct in-memory `x360_frostbite::dbx::DbxFile` AST manipulation.
@@ -74,7 +90,7 @@ flowchart TD
 
 ---
 
-## 4. Transforming `bfbc2-tool-suite` into `frostbite-tool-suite`
+## 4. Transforming `bfbc2-tool-suite` into `frostbite-tool-suite` (superseded proposal; see the status table)
 
 Instead of maintaining separate `bfbc2-tool-suite` and `bf1943-tool-suite` repositories (with mixed Python/C# tools and duplicated `core/` stacks), consolidate **BFBC1, BF1943, BFBC2/Vietnam/Onslaught, and Medal of Honor 2010 MP** findings into one pure-Rust, game-agnostic **`frostbite-tool-suite`**.
 
@@ -84,8 +100,8 @@ Instead of maintaining separate `bfbc2-tool-suite` and `bf1943-tool-suite` repos
 
 | Profile | Engine Dialect | Native Capabilities |
 |---|---|---|
-| **`bfbc1`** | Frostbite 1.0 (Xbox 360 / PS3) | `0x29` heightfields, Kynogon HPD v1, Havok 4.6.1, Gold Rush & SP mission entities, `ske01` skeleton |
-| **`bf1943`** | Frostbite 1.5 early (Xbox 360 / PS3 / PC) | `0x2D` heightfields, Air Raid / bunker / `ScorePartComponentData` classes, Pacific maps, BE/LE NavKit |
+| **`bfbc1`** | Frostbite 1.0 (Xbox 360 / PS3) | `0x29` (compact) and `0x2D` heightfields (`bfbc1::upgrade_heightfield` reads both), Kynogon HPD v1, Havok 4.6.1, Gold Rush & SP mission entities, `ske01` skeleton |
+| **`bf1943`** | Frostbite 1.5 early (Xbox 360 / PS3; the PC release was cancelled) | `0x2D` heightfields, Air Raid / bunker / `ScorePartComponentData` classes, Pacific maps, BE/LE NavKit |
 | **`bfbc2`** | Frostbite 1.5 (PC / Console) | `0x31` heightfields, Kynogon HPD v2, Havok 5.5.0, Rush/Conquest/Vietnam/Onslaught, stock BFBC2 & OPFOR `modules/` export |
 | **`moh2010`** | Frostbite 1.5 MP (PC / Console) | MoH-native DBX schemas (Combat Mission, Sector Control, Objective Raid, Team Assault), MoH asset palette, native `mohmpgame.exe` level & mod export |
 
