@@ -119,7 +119,8 @@ The workspace is **MIT-licensed** (`LICENSE`), with one strictly isolated except
 
 * **`platform/x360-xma`** is a Rust port of FFmpeg's WMA Pro / XMA2 decoder (`libavcodec/wmaprodec.c`) and is licensed under **LGPL-2.1-or-later** (`platform/x360-xma/LICENSE`).
 * Keeping `x360-xma` as its own leaf crate ensures consumers who require a strictly MIT-only dependency graph can omit `x360-xma` without affecting any other crate.
-* **Planned MIT-only Frostbite consumption:** Gating `x360-xma` behind an optional `xma` Cargo feature in `x360-frostbite` (and optionally splitting out a PC/schema-agnostic `engines/frostbite-core` crate) allows downstream MIT workspaces (`battlefield-opfor`'s `opfor-cli` and the planned `frostbite-tool-suite`) to share all Frostbite format parsers directly in memory while keeping `xenolith.exe` as the separate LGPL-2.1 process boundary strictly for XMA2 audio transcoding. See [Ecosystem & Tool Suite Roadmap](ECOSYSTEM_ROADMAP.md).
+* **The `xma` feature (enforced in CI):** `x360-xma` is an optional dependency of `x360-frostbite` and `xenolith`, linked only by their `xma` feature (on by default). `--no-default-features` gives an MIT-only graph; CI's `mit-only` job (`.github/workflows/ci.yml`) builds, lints and tests it and fails if `cargo tree -e normal` lists `x360-xma`.
+* **MIT-only Frostbite consumption:** the `xma` gate (and optionally splitting out a PC/schema-agnostic `engines/frostbite-core` crate) allows downstream MIT workspaces (`battlefield-opfor`'s `opfor-cli` and the planned `frostbite-tool-suite`) to share all Frostbite format parsers directly in memory while keeping `xenolith.exe` as the separate LGPL-2.1 process boundary strictly for XMA2 audio transcoding. See [Ecosystem & Tool Suite Roadmap](ECOSYSTEM_ROADMAP.md).
 
 ---
 

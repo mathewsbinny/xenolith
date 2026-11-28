@@ -1,0 +1,147 @@
+# The workspace's checks on every push and pull request, on Windows (the platform the tools are built and used on):
+#
+#   fmt       cargo fmt --all --check
+#   clippy    cargo clippy --workspace --all-targets -- -D warnings (default features: frostbite + xma)
+#   test      cargo test --workspace (synthetic inputs only: no test reads game data)
+#   mit-only  the MIT-only build: xenolith and x360-frostbite with --no-default-features (frostbite on, xma off),
+#             built, linted and tested, and `cargo tree` must not list x360-xma among their linked dependencies
+#   xma       the xenolith binary built with --features xma (the LGPL-2.1-or-later decoder linked in)
+#
+# The toolchain is rust-toolchain.toml's. Cargo's registry and target folder are cached by Swatinem/rust-cache, one
+# cache per job (main writes it, branches read it). This workflow publishes nothing.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  fmt:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern '^channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --component rustfmt --component clippy
+          cargo --version
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+  clippy:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern '^channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --component rustfmt --component clippy
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2.9.3
+        with:
+          shared-key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: cargo clippy -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern '^channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --component rustfmt --component clippy
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2.9.3
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: cargo test (synthetic inputs only)
+        run: cargo test --workspace --locked
+
+  mit-only:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern '^channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --component rustfmt --component clippy
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2.9.3
+        with:
+          shared-key: mit-only
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: No x360-xma in the MIT-only dependency graph (cargo tree)
+        # the linked dependencies only (-e normal): x360-xma must not appear for either the app or the engine crate
+        run: |
+          $graphs = @(
+            @('-p', 'xenolith', '--no-default-features', '--features', 'frostbite'),
+            @('-p', 'x360-frostbite', '--no-default-features')
+          )
+          foreach ($g in $graphs) {
+            $tree = cargo tree --locked @g -e normal --prefix none
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $hits = $tree | Where-Object { $_ -match '^x360-xma ' }
+            if ($hits) { Write-Error "x360-xma is linked by cargo tree $($g -join ' ')"; exit 1 }
+            Write-Output "ok   cargo tree $($g -join ' '): $(@($tree | Sort-Object -Unique).Count) packages, no x360-xma"
+          }
+      - name: Build (MIT-only)
+        run: cargo build --locked -p xenolith --no-default-features --features frostbite
+      - name: cargo clippy -D warnings (MIT-only)
+        run: cargo clippy --locked -p xenolith -p x360-frostbite --no-default-features --features xenolith/frostbite --all-targets -- -D warnings
+      - name: cargo test (MIT-only)
+        run: cargo test --locked -p xenolith -p x360-frostbite --no-default-features --features xenolith/frostbite
+
+  xma:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern '^channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --component rustfmt --component clippy
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2.9.3
+        with:
+          shared-key: xma
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build with the xma feature (LGPL-2.1-or-later decoder linked)
+        run: |
+          cargo build --locked -p xenolith --no-default-features --features frostbite,xma
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $tree = cargo tree --locked -p xenolith --no-default-features --features frostbite,xma -e normal --prefix none
+          if (-not ($tree | Where-Object { $_ -match '^x360-xma ' })) { Write-Error 'the xma feature did not link x360-xma'; exit 1 }
+          Write-Output 'ok   x360-xma linked with --features xma'
