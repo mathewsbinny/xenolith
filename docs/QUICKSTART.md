@@ -3,7 +3,7 @@
 ## 1. Prerequisites
 
 * **Rust toolchain:** Rust `1.100.0` (automatically selected by [`rust-toolchain.toml`](../rust-toolchain.toml) via `rustup`).
-* **Platform:** Pure Rust — builds and passes all tests on Windows, Linux, and macOS with zero C/C++ or Python dependencies.
+* **Platform:** Pure Rust, with no C/C++ or Python build dependencies. It is built and tested on Windows; other platforms are untested (checked 2026-11-28). `compile-xenos-shaders` also needs Microsoft's `fxc.exe` (from the Windows SDK, or named by the `FXC_PATH` environment variable).
 
 ## 2. Build, Test, Lint, and Docs
 
@@ -22,6 +22,10 @@ cargo doc --workspace --no-deps --open
 
 # Check formatting
 cargo fmt --check
+
+# MIT-only build: no x360-xma (LGPL-2.1-or-later) in the dependency graph
+cargo build -p xenolith --no-default-features --features frostbite
+cargo tree -p xenolith --no-default-features --features frostbite   # must not list x360-xma
 ```
 
 ### Launching Xenolith (Desktop GUI & Headless CLI)
@@ -107,9 +111,10 @@ fn inspect_and_run_shader(xdk_blob: &[u8]) -> Result<(), Box<dyn std::error::Err
 
 ```rust
 fn decode_xma2_to_pcm16(riff_bytes: &[u8]) -> Result<(u32, Vec<i16>), x360_xma::Error> {
+    let rate = x360_xma::parse_riff(riff_bytes)?.rate; // the sample rate is the RIFF's
     let decoded = x360_xma::decode_riff(riff_bytes)?;
     let pcm16 = x360_xma::to_s16(&decoded.planar);
-    Ok((decoded.sample_rate, pcm16))
+    Ok((rate, pcm16))
 }
 ```
 
@@ -135,10 +140,11 @@ fn convert_frostbite_texture(xenon_res: &[u8]) -> Result<Vec<u8>, x360_frostbite
 
 ## 4. Using Individual Crates in Your Own Project
 
-Because the workspace is a layered modular monolith, you can depend on only the crates you need (for example, an MIT-only project that wants Xenos texture untiling and shaders without `x360-xma`):
+Because the workspace is a layered modular monolith, you can depend on only the crates you need (for example, an MIT-only project that wants Xenos texture untiling and shaders without `x360-xma`; `x360-frostbite` is MIT-only with `default-features = false`):
 
 ```toml
 [dependencies]
 x360-xenos-texture = { path = "../xenolith/platform/x360-xenos-texture" }
 x360-xenos-shader  = { path = "../xenolith/platform/x360-xenos-shader" }
+x360-frostbite     = { path = "../xenolith/engines/frostbite", default-features = false }
 ```

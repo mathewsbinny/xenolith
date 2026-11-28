@@ -1,6 +1,6 @@
 # API Reference
 
-This reference summarizes the public modules, types, functions, and error contracts across all 8 workspace crates. For full inline documentation and rustdoc cross-links, run:
+This reference summarizes the public modules, types, functions, and error contracts across all 8 workspace crates (checked against the code of `main`, 2026-11-28). For full inline documentation and rustdoc cross-links, run:
 
 ```powershell
 cargo doc --workspace --no-deps --open
@@ -13,12 +13,13 @@ cargo doc --workspace --no-deps --open
 ### `x360-containers` ([`platform/x360-containers`](../platform/x360-containers/src/lib.rs))
 Read-only parsers for Xbox 360 storage containers.
 
-* **`stfs`** — Xbox 360 STFS packages (`CON `, `PIRS`, `LIVE`).
-  * `parse_header(b: &[u8]) -> Result<Header, Error>` — Parses package magic, block counts, table offsets, and metadata.
-  * `entries(b: &[u8]) -> Result<Vec<Entry>, Error>` — Lists files/directories with paths, sizes, and starting blocks.
-  * `read_entry(b: &[u8], entry: &Entry) -> Result<Vec<u8>, Error>` — Extracts a file's payload following STFS hash-table block chains.
-* **`xiso`** — Xbox 360 XISO disc images (`MICROSOFT*XBOX*MEDIA`).
-  * `open(data: &[u8])` / `walk(...)` — Walks the XDVDFS binary-tree directory structure, refusing cyclic directory loops.
+* **`stfs`** — Xbox 360 STFS packages (`CON `, `PIRS`, `LIVE`), read through any `Read + Seek` source.
+  * `Package::open(f: R) -> Result<Package<R>, Error>` — Reads the header (`Header`: magic, block counts, table offsets, metadata) and the file table (`Entry`: paths, sizes, starting blocks).
+  * `Package::from_header(f: R, header: Header) -> Package<R>` — Builds a reader from an already-parsed header.
+  * `Package::read(&mut self, start, count, consecutive, size) -> io::Result<Vec<u8>>` — Extracts a file's payload, following the hash-table block chains.
+* **`xiso`** — Xbox 360 XISO disc images (`MICROSOFT*XBOX*MEDIA`), read through any `Read + Seek` source.
+  * `find_partition(f) -> Result<u64, Error>` — Finds the XDVDFS partition (`PARTITIONS`: the four known offsets).
+  * `root(f, base) -> io::Result<Option<(u32, u32)>>` / `walk(...)` — Walks the binary-tree directory structure (to `MAX_DEPTH`), refusing cyclic directory loops; files come back as `File = (Vec<u8>, u32, u32)`.
 * **`xex`** — Xbox 360 `XEX2` executables.
   * `parse(data: &[u8]) -> Result<XexHeader, XexError>` — Parses optional headers (`Title ID`, `Media ID`, `entry_point`, `image_base`), security info, and 24-byte SHA-1 page descriptors.
   * `XexHeader::verify_image_pages(decoded_image: &[u8]) -> Result<PageVerifyReport, XexError>` — Authenticates a decoded PE image against the reverse-linked SHA-1 page-digest chain.
@@ -28,7 +29,7 @@ Read-only parsers for Xbox 360 storage containers.
 ### `x360-xma` ([`platform/x360-xma`](../platform/x360-xma/src/lib.rs)) *(LGPL-2.1-or-later)*
 Pure-Rust XMA2 audio decoder.
 
-* **Types:** `Decoded { planar: Vec<Vec<f32>>, sample_rate: u32 }`, `Riff<'a>`, `Error`.
+* **Types:** `Decoded { planar: Vec<Vec<f32>>, errors: u32 }` (`errors`: the errors FFmpeg would have logged; the sample rate is the RIFF's, `Riff::rate`), `Riff<'a> { channels, rate, byte_rate, streams, data }`, `Error`.
 * **Functions:**
   * `parse_riff(b: &[u8]) -> Result<Riff<'_>, Error>` — Extracts `fmt ` and `data` chunks from a RIFF WAVE XMA2 stream.
   * `decode(data: &[u8], channels: usize, rate: u32, byte_rate: u32) -> Result<Decoded, Error>` — Decodes raw 2048-byte XMA2 packets into planar `f32` PCM.
@@ -63,9 +64,10 @@ Xbox 360 XDK shader container parser, Xenos microcode disassembler, HLSL transla
   * `fetch_const(f: &Fetch) -> u32`.
 * **`disasm`** — Human-readable microcode listing.
   * `body(sh: &Shader, show_raw: bool, is_pixel: bool) -> Vec<String>` — Formats CF labels, ALU vector/scalar pairs, predicates, and fetches.
-* **`hlsl`** — Xenos → Direct3D 10/11 HLSL translator.
+* **`hlsl`** — Xenos → Direct3D 10/11 HLSL translator. A copy of the suite's `bc2-shader` translator that has drifted from it (2026-11-27: main lacks the suite's forward-jump emitter); keep the two in step until round XM4 makes one the other.
   * `translate(sh: &Shader, iface: &Interface) -> Result<String, TranslateError>` — Emits HLSL bound to the caller's `Interface`.
   * `translate_all(...)` / `crate::translate_blobs(...)` — Parallel batch translation via Rayon.
+* **`pyrepr`** — Python's `repr(float)` (the shortest round-tripping digits), which the HLSL text writes its numbers with, kept from the port off the suite's Python translator (a porting crutch; the suite plans to retire such Python-isms).
 * **`exec`** — Pure-Rust CPU reference interpreter (pixel **and** vertex shaders).
   * `run(sh, inputs, consts, textures, n, pos, front) -> Result<ExecResult, ExecError>` — Runs with default `Options`.
   * `run_with(..., opts: &Options) -> Result<ExecResult, ExecError>` — Full control over `filter_bits`, `zero_outside`, `trace`, `continue_after_kill`, `bool_consts`, `loop_consts`, and `vertex_buffers`.
@@ -93,8 +95,8 @@ RAD Game Tools Granny 2 (`.gr2`) skeleton and animation tools.
 
 * **`format`** — PC & Xbox 360 `.gr2` parser (`Granny`), object tree reader, bone tables (`bone_table`, `renumber`, `TableKind`).
 * **`convert`** — Xbox 360 → PC endian conversion.
-  * `to_pc(data: &[u8], bone_map: Option<&[i32]>) -> Result<Vec<u8>, GrannyError>` — Converts big-endian `.gr2` to little-endian with optional bone renumbering and CRC recomputation.
-  * `to_pc_all(...)` — Parallel batch conversion via Rayon.
+  * `to_pc(b: &[u8], bones: Option<&HashMap<u32, u32, S>>) -> Result<Vec<u8>, GrannyError>` — Converts big-endian `.gr2` to little-endian with optional bone renumbering and CRC recomputation.
+  * `to_pc_all(...)` — Parallel batch conversion via Rayon; `bone_names(b)` and `bone_map(src, dst)` build the renumbering map.
 * **`edit`** — Curve key sampling, position shifting, orientation curve writing, track addition, and CRC32 recomputation.
 
 ---
@@ -102,7 +104,13 @@ RAD Game Tools Granny 2 (`.gr2`) skeleton and animation tools.
 ## 3. Engine Adapters (`engines/`)
 
 ### `x360-frostbite` ([`engines/frostbite`](../engines/frostbite/src/lib.rs))
-Frostbite 1 / 1.5 engine-specific Xbox 360 → PC adapters (also re-exports `containers`, `xenos_texture`, `shader`, `xma`, `havok`, `granny`).
+Frostbite 1 / 1.5 engine-specific Xbox 360 → PC adapters (also re-exports `containers`, `xenos_texture`, `shader`, `havok`, `granny`, and `xma` when the `xma` feature is on).
+
+* **Cargo features:** `default = ["xma"]`. With `default-features = false` the crate links no LGPL code; the XMA2-backed audio paths (`wavport`, Wave porting in `bundle_port`) need `xma`.
+* **Known defects (round XM0, 2026-11-27; checked 2026-11-28).** The `fbrb`, `dbx` and `apt` modules are xenolith's own rewrites, not the suite's verified readers (`bfbc2-tool-suite` `spec/formats/fbrb.md`, `dbx.md`). Until round XM3 replaces them with the suite's code, do not rely on them for byte-exact output:
+  * `fbrb`: the header and payload are unzipped when they *start with* `1F 8B`, not by the header's zipped byte (FBRB-HDR-10); `parse` drops each entry's size2 and `to_bytes` writes size2 = size (wrong for RES-wrapped entries, FBRB-ENT-5); DICE's padded layouts of the async / streaming bundles are not kept (FBRB-LAY-*); names and types share one interned string table and lookups are case-sensitive (FBRB-ENT-9: the game's are not). The module's own doc comment omits the header's trailing zipped byte and payload-length word.
+  * `dbx`: `to_xml` prints every packed number as an `i32` (`engines/frostbite/src/dbx.rs:264`), so a float field comes out as its bit pattern; `from_xml` infers kinds from the text (`dbx.rs:559-573`: `true` / `false` and `/`-separated integers), so a string field holding `"42"` or `"true"` changes kind; the string table is not in DICE's order.
+  * `apt`: one of three BIGF implementations across the repositories, each handling duplicate names differently.
 
 * **`texture`** — Frostbite 92-byte `XenonTexture` → `ITexture` wrapper over `x360-xenos-texture` (auto-unwraps 64-byte `RES\x02` prefixes and supports 2D, cube, and 3D volume textures).
   * `convert(b: &[u8]) -> Result<Vec<u8>, TextureError>` / `convert_all(items: &[&[u8]])` / `unwrap_res_header(b: &[u8])`.
@@ -112,7 +120,8 @@ Frostbite 1 / 1.5 engine-specific Xbox 360 → PC adapters (also re-exports `con
 * **`bfbc1`** (`engines/frostbite/src/bfbc1/{mod,dbx,hpd,terrain,havok,dedup}.rs`, re-exported at `x360_frostbite::bfbc1`) — BFBC1 (Frostbite 1.0 → 1.5) schema and asset upgraders: empirical DBX schema migration (`upgrade_dbx`, `upgrade_dbx_bytes`, `DbxSchemaRules::bfbc1_to_fb15` — lowers `Audio.ValueRef` defaults, drops `LevelReferencedAssetsData` & `RichPresenceContextPair`, clears dangling GUID refs and prunes `<item ref="null"/>` slots inside `<array>` containers, renames `RegroupOrderEntityData`, wraps `Mesh1p`/`Mesh3p`, normalizes `EIA*`→`Eia*`, remaps `BoneId`), Frostbite 1.0 `0x29`/`256×256`/`512×512` heightfield upgrader (`upgrade_heightfield`, `downsample_sub_heightfield_256_to_128`), PC vertex layout & `MeshData` upgrader (`compute_pc_vertex_layout`, `build_pc_layout_body`, `upgrade_mesh_header`), Havok `4.6.1 → 5.5.0` structural porting (`HavokPortContext`, `port_havok_461_to_550_pc`, `inspect_havok_header`, `upgrade_havok_packfile`), Bink `RES\x02` movie unwrapper (`unwrap_bink_movie`), Kynogon HPD v1 → v2 navmesh upgrader (`upgrade_kynogon_hpd`, `HpdUpgradeReport` — upgrades `1.3f` headers and compacts 20-byte edges to 12-byte edges while preserving 36-byte nodes and `"Kynogon InPlace Mesh"` payloads), `PathdataSectorOffsets` binary DBX builder (`build_sector_offsets_dbx`), and shared-common `FbRB` deduplicators (`deduplicate_common_entries`, `deduplicate_common_entries_guid_aware`).
 * **`dbx`** — Frostbite 1 / 1.5 `{binary}` `.dbx` partition parser (`parse`), deterministic binary serializer (`DbxFile::to_bytes`), XML exporter (`DbxFile::to_xml`), and pure-Rust XML-to-DBX compiler (`from_xml`).
 * **`apt`** — EA APT `BIGF` (`.apt`/`.const`/`.geo`) archive reader, writer, BE→LE structural converter, and `FSCommand`/`extern.*`/console-prompt symbol inspector (`parse_bigf`, `write_bigf`, `convert_bigf_be_to_le`, `inspect_apt_symbols`).
-* **`menu_export`** — Pure-Rust BF1943 Xbox 360 UI art (PNG), UI SFX (PCM16 WAV), and `EurostileLTStd-BoldCn` bitmap font + kerning exporter (`export_bf1943_menu_assets`, `decode_itexture_rgba`, `encode_rgba_png`, `parse_dbx_font_glyphs`, `parse_dbx_font_kerning`).
+* **`menu_port`** — Battlefield 1943 Xbox 360 → PC `mainmenu-00.fbrb` converter (APT BE → LE, `XenonTexture` → `ITexture`, `Wave` → EA-XAS, `_Xenon` → `_Win32` names in DBX).
+* **`menu_export`** — Pure-Rust BF1943 Xbox 360 UI art (PNG), UI SFX (PCM16 WAV), and `EurostileLTStd-BoldCn` bitmap font + kerning exporter (`export_bf1943_menu_assets`, `decode_itexture_rgba`, `encode_rgba_png`, `encode_pcm16_wav`, `parse_dbx_font_glyphs`, `parse_dbx_font_kerning`).
 * **`texcheck`** — PC `ITexture` mip-level reader (`levels`) and DXT1/DXT3/DXT5/BC5/L8 pixel decoder (`decode`).
 * **`mesh` / `meshconv` / `meshdata`** — Frostbite `MeshData` / `MeshSet` headers, vertex-element conversion (packed normals/colors → half-floats), relayout, and triangle-strip unrolling.
 * **`terrain`** — Console terrain heightfield (`64`/`128`/`256`/`1024`/`2048`), water mesh, material map, visual terrain/water, and soot conversion.
