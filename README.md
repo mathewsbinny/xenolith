@@ -44,6 +44,8 @@ design/
 The workspace is licensed under the **MIT License** (`LICENSE`), with one exception:
 * `platform/x360-xma` is a Rust port of FFmpeg's WMA Pro / XMA2 decoder and is licensed under **LGPL-2.1-or-later** (`platform/x360-xma/LICENSE`).
 
+`x360-xma` is linked only through the `xma` Cargo feature of `x360-frostbite` and `xenolith`, which is on by default: a default `xenolith.exe` combines the MIT code with the LGPL-2.1-or-later decoder, whose complete source (with the rest of the workspace's) is this repository. `--no-default-features` (with `--features frostbite` for the app) builds MIT-only crates and binaries without XMA2 decoding; CI (`.github/workflows/ci.yml`, job `mit-only`) builds that configuration on every push and fails if `cargo tree` lists `x360-xma` in it.
+
 ## Quick Commands
 
 ```powershell
@@ -56,4 +58,8 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 $env:RUSTDOCFLAGS="-D warnings"; cargo doc --workspace --no-deps
 cargo fmt --check
+
+# The MIT-only build (no x360-xma linked; CI's mit-only job)
+cargo build -p xenolith --no-default-features --features frostbite
+cargo tree -p xenolith --no-default-features --features frostbite -e normal --prefix none
 ```

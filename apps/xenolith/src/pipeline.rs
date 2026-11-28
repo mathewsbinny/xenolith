@@ -203,8 +203,10 @@ pub struct Inspection {
     pub suggested: Option<JobKind>,
 }
 
-/// Encodes interleaved 16-bit PCM samples as a standard 44-byte RIFF WAVE file.
+/// Encodes interleaved 16-bit PCM samples as a standard 44-byte RIFF WAVE file. Only the XMA2 jobs write one, so a
+/// build without the `xma` feature leaves it out (it would be dead code there).
 #[must_use]
+#[cfg(any(feature = "xma", test))]
 pub fn encode_wav_pcm16(samples: &[i16], channels: u16, sample_rate: u32) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
     let byte_rate = sample_rate * u32::from(channels) * 2;
